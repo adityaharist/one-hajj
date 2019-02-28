@@ -1,4 +1,3 @@
-import window from '../../utils/window';
 import $ from '../../utils/dom';
 import Utils from '../../utils/utils';
 import Support from '../../utils/support';
@@ -16,6 +15,7 @@ import events from './events/index';
 import breakpoints from './breakpoints/index';
 import classes from './classes/index';
 import images from './images/index';
+import checkOverflow from './check-overflow/index';
 
 import defaults from './defaults';
 
@@ -29,6 +29,7 @@ const prototypes = {
   manipulation,
   events,
   breakpoints,
+  checkOverflow,
   classes,
   images,
 };
@@ -69,14 +70,14 @@ class Swiper extends SwiperClass {
       if (module.params) {
         const moduleParamName = Object.keys(module.params)[0];
         const moduleParams = module.params[moduleParamName];
-        if (typeof moduleParams !== 'object') return;
+        if (typeof moduleParams !== 'object' || moduleParams === null) return;
         if (!(moduleParamName in params && 'enabled' in moduleParams)) return;
         if (params[moduleParamName] === true) {
           params[moduleParamName] = { enabled: true };
         }
         if (
-          typeof params[moduleParamName] === 'object' &&
-          !('enabled' in params[moduleParamName])
+          typeof params[moduleParamName] === 'object'
+          && !('enabled' in params[moduleParamName])
         ) {
           params[moduleParamName].enabled = true;
         }
@@ -92,6 +93,9 @@ class Swiper extends SwiperClass {
     swiper.params = Utils.extend({}, swiperParams, extendedDefaults, params);
     swiper.originalParams = Utils.extend({}, swiper.params);
     swiper.passedParams = Utils.extend({}, params);
+
+    // Save Dom lib
+    swiper.$ = $;
 
     // Find el
     const $el = $(swiper.params.el);
@@ -140,7 +144,8 @@ class Swiper extends SwiperClass {
         return swiper.params.direction === 'vertical';
       },
       // RTL
-      rtl: swiper.params.direction === 'horizontal' && (el.dir.toLowerCase() === 'rtl' || $el.css('direction') === 'rtl'),
+      rtl: (el.dir.toLowerCase() === 'rtl' || $el.css('direction') === 'rtl'),
+      rtlTranslate: swiper.params.direction === 'horizontal' && (el.dir.toLowerCase() === 'rtl' || $el.css('direction') === 'rtl'),
       wrongRTL: $wrapperEl.css('display') === '-webkit-box',
 
       // Indexes
@@ -153,6 +158,7 @@ class Swiper extends SwiperClass {
 
       // Props
       translate: 0,
+      previousTranslate: 0,
       progress: 0,
       velocity: 0,
       animating: false,
@@ -165,17 +171,22 @@ class Swiper extends SwiperClass {
       touchEvents: (function touchEvents() {
         const touch = ['touchstart', 'touchmove', 'touchend'];
         let desktop = ['mousedown', 'mousemove', 'mouseup'];
-        if (window.navigator.pointerEnabled) {
+        if (Support.pointerEvents) {
           desktop = ['pointerdown', 'pointermove', 'pointerup'];
-        } else if (window.navigator.msPointerEnabled) {
-          desktop = ['MSPointerDown', 'MsPointerMove', 'MsPointerUp'];
+        } else if (Support.prefixedPointerEvents) {
+          desktop = ['MSPointerDown', 'MSPointerMove', 'MSPointerUp'];
         }
-
-        return {
-          start: Support.touch || !swiper.params.simulateTouch ? touch[0] : desktop[0],
-          move: Support.touch || !swiper.params.simulateTouch ? touch[1] : desktop[1],
-          end: Support.touch || !swiper.params.simulateTouch ? touch[2] : desktop[2],
+        swiper.touchEventsTouch = {
+          start: touch[0],
+          move: touch[1],
+          end: touch[2],
         };
+        swiper.touchEventsDesktop = {
+          start: desktop[0],
+          move: desktop[1],
+          end: desktop[2],
+        };
+        return Support.touch || !swiper.params.simulateTouch ? swiper.touchEventsTouch : swiper.touchEventsDesktop;
       }()),
       touchEventsData: {
         isTouched: undefined,
@@ -229,9 +240,12 @@ class Swiper extends SwiperClass {
     // Return app instance
     return swiper;
   }
+
   slidesPerViewDynamic() {
     const swiper = this;
-    const { params, slides, slidesGrid, size: swiperSize, activeIndex } = swiper;
+    const {
+      params, slides, slidesGrid, size: swiperSize, activeIndex,
+    } = swiper;
     let spv = 1;
     if (params.centeredSlides) {
       let slideSize = slides[activeIndex].swiperSlideSize;
@@ -259,17 +273,23 @@ class Swiper extends SwiperClass {
     }
     return spv;
   }
+
   update() {
     const swiper = this;
     if (!swiper || swiper.destroyed) return;
+    const { snapGrid, params } = swiper;
+    // Breakpoints
+    if (params.breakpoints) {
+      swiper.setBreakpoint();
+    }
     swiper.updateSize();
     swiper.updateSlides();
     swiper.updateProgress();
     swiper.updateSlidesClasses();
 
-    let newTranslate;
     function setTranslate() {
-      newTranslate = Math.min(Math.max(swiper.translate, swiper.maxTranslate()), swiper.minTranslate());
+      const translateValue = swiper.rtlTranslate ? swiper.translate * -1 : swiper.translate;
+      const newTranslate = Math.min(Math.max(translateValue, swiper.maxTranslate()), swiper.minTranslate());
       swiper.setTranslate(newTranslate);
       swiper.updateActiveIndex();
       swiper.updateSlidesClasses();
@@ -290,8 +310,12 @@ class Swiper extends SwiperClass {
         setTranslate();
       }
     }
+    if (params.watchOverflow && snapGrid !== swiper.snapGrid) {
+      swiper.checkOverflow();
+    }
     swiper.emit('update');
   }
+
   init() {
     const swiper = this;
     if (swiper.initialized) return;
@@ -316,6 +340,10 @@ class Swiper extends SwiperClass {
 
     // Update slides
     swiper.updateSlides();
+
+    if (swiper.params.watchOverflow) {
+      swiper.checkOverflow();
+    }
 
     // Set Grab Cursor
     if (swiper.params.grabCursor) {
@@ -342,9 +370,17 @@ class Swiper extends SwiperClass {
     // Emit
     swiper.emit('init');
   }
+
   destroy(deleteInstance = true, cleanStyles = true) {
     const swiper = this;
-    const { params, $el, $wrapperEl, slides } = swiper;
+    const {
+      params, $el, $wrapperEl, slides,
+    } = swiper;
+
+    if (typeof swiper.params === 'undefined' || swiper.destroyed) {
+      return null;
+    }
+
     swiper.emit('beforeDestroy');
 
     // Init Flag
@@ -391,19 +427,26 @@ class Swiper extends SwiperClass {
       Utils.deleteProps(swiper);
     }
     swiper.destroyed = true;
+
+    return null;
   }
+
   static extendDefaults(newDefaults) {
     Utils.extend(extendedDefaults, newDefaults);
   }
+
   static get extendedDefaults() {
     return extendedDefaults;
   }
+
   static get defaults() {
     return defaults;
   }
+
   static get Class() {
     return SwiperClass;
   }
+
   static get $() {
     return $;
   }

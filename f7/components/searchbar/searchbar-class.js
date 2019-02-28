@@ -1,3 +1,4 @@
+import { document } from 'ssr-window';
 import $ from 'dom7';
 import Utils from '../../utils/utils';
 import FrameworkClass from '../../utils/class';
@@ -11,12 +12,15 @@ class Searchbar extends FrameworkClass {
     const defaults = {
       el: undefined,
       inputEl: undefined,
+      inputEvents: 'change input compositionend',
       disableButton: true,
       disableButtonEl: undefined,
       backdropEl: undefined,
       searchContainer: undefined, // container to search, HTMLElement or CSS selector
       searchItem: 'li', // single item selector, CSS selector
       searchIn: undefined, // where to search in item, CSS selector
+      searchGroup: '.list-group',
+      searchGroupTitle: '.item-divider, .list-group-title',
       ignore: '.searchbar-ignore',
       foundEl: '.searchbar-found',
       notFoundEl: '.searchbar-not-found',
@@ -39,6 +43,8 @@ class Searchbar extends FrameworkClass {
     const $el = $(sb.params.el);
     if ($el.length === 0) return sb;
 
+    if ($el[0].f7Searchbar) return $el[0].f7Searchbar;
+
     $el[0].f7Searchbar = sb;
 
     let $pageEl;
@@ -48,9 +54,8 @@ class Searchbar extends FrameworkClass {
     } else {
       $navbarEl = $el.parents('.navbar-inner');
       if ($navbarEl.length > 0) {
-        if ($navbarEl[0].f7Page) {
-          $pageEl = $navbarEl[0].f7Page.$el;
-        } else {
+        $pageEl = $(app.navbar.getPageByEl($navbarEl[0]));
+        if (!$pageEl.length) {
           const $currentPageEl = $el.parents('.view').find('.page-current');
           if ($currentPageEl[0] && $currentPageEl[0].f7Page && $currentPageEl[0].f7Page.navbarEl === $navbarEl[0]) {
             $pageEl = $currentPageEl;
@@ -143,7 +148,7 @@ class Searchbar extends FrameworkClass {
       $inputEl,
       inputEl: $inputEl[0],
       $disableButtonEl,
-      disableButtonEl: $disableButtonEl[0],
+      disableButtonEl: $disableButtonEl && $disableButtonEl[0],
       disableButtonHasMargin: false,
       $pageEl,
       pageEl: $pageEl && $pageEl[0],
@@ -180,10 +185,10 @@ class Searchbar extends FrameworkClass {
       const value = sb.$inputEl.val().trim();
       if (
         (
-          (sb.$searchContainer && sb.$searchContainer.length > 0) &&
-          (sb.params.searchIn || sb.isVirtualList || sb.params.searchIn === sb.params.searchItem)
-        ) ||
-        sb.params.customSearch
+          (sb.$searchContainer && sb.$searchContainer.length > 0)
+          && (sb.params.searchIn || sb.isVirtualList || sb.params.searchIn === sb.params.searchItem)
+        )
+        || sb.params.customSearch
       ) {
         sb.search(value, true);
       }
@@ -199,12 +204,18 @@ class Searchbar extends FrameworkClass {
       if (!sb || (sb && !sb.$el)) return;
       if (sb.enabled) {
         sb.$el.removeClass('searchbar-enabled');
+        if (sb.expandable) {
+          sb.$el.parents('.navbar-inner').removeClass('with-searchbar-expandable-enabled');
+        }
       }
     }
     function onPageBeforeIn() {
       if (!sb || (sb && !sb.$el)) return;
       if (sb.enabled) {
         sb.$el.addClass('searchbar-enabled');
+        if (sb.expandable) {
+          sb.$el.parents('.navbar-inner').addClass('with-searchbar-expandable-enabled');
+        }
       }
     }
     sb.attachEvents = function attachEvents() {
@@ -221,7 +232,7 @@ class Searchbar extends FrameworkClass {
       }
       sb.$inputEl.on('focus', onInputFocus);
       sb.$inputEl.on('blur', onInputBlur);
-      sb.$inputEl.on('change input compositionend', onInputChange);
+      sb.$inputEl.on(sb.params.inputEvents, onInputChange);
       sb.$inputEl.on('input:clear', onInputClear);
     };
     sb.detachEvents = function detachEvents() {
@@ -233,12 +244,12 @@ class Searchbar extends FrameworkClass {
         sb.$backdropEl.off('click', disableOnClick);
       }
       if (sb.expandable && app.theme === 'ios' && sb.view && $navbarEl && sb.$pageEl) {
-        sb.$pageEl.on('page:beforeout', onPageBeforeOut);
-        sb.$pageEl.on('page:beforein', onPageBeforeIn);
+        sb.$pageEl.off('page:beforeout', onPageBeforeOut);
+        sb.$pageEl.off('page:beforein', onPageBeforeIn);
       }
       sb.$inputEl.off('focus', onInputFocus);
       sb.$inputEl.off('blur', onInputBlur);
-      sb.$inputEl.off('change input compositionend', onInputChange);
+      sb.$inputEl.off(sb.params.inputEvents, onInputChange);
       sb.$inputEl.off('input:clear', onInputClear);
     };
 
@@ -250,6 +261,7 @@ class Searchbar extends FrameworkClass {
 
     return sb;
   }
+
   clear(e) {
     const sb = this;
     if (!sb.query && e && $(e.target).hasClass('searchbar-clear')) {
@@ -262,6 +274,7 @@ class Searchbar extends FrameworkClass {
     sb.emit('local::clear searchbarClear', sb, previousQuery);
     return sb;
   }
+
   setDisableButtonMargin() {
     const sb = this;
     if (sb.expandable) return;
@@ -273,6 +286,7 @@ class Searchbar extends FrameworkClass {
     sb.$disableButtonEl.transition('');
     sb.disableButtonHasMargin = true;
   }
+
   enable(setFocus) {
     const sb = this;
     if (sb.enabled) return sb;
@@ -283,13 +297,27 @@ class Searchbar extends FrameworkClass {
         sb.backdropShow();
       }
       sb.$el.addClass('searchbar-enabled');
+      if (!sb.$disableButtonEl || (sb.$disableButtonEl && sb.$disableButtonEl.length === 0)) {
+        sb.$el.addClass('searchbar-enabled-no-disable-button');
+      }
       if (!sb.expandable && sb.$disableButtonEl && sb.$disableButtonEl.length > 0 && app.theme === 'ios') {
         if (!sb.disableButtonHasMargin) {
           sb.setDisableButtonMargin();
         }
         sb.$disableButtonEl.css(`margin-${app.rtl ? 'left' : 'right'}`, '0px');
       }
-      if (sb.$hideOnEnableEl) sb.$hideOnEnableEl.hide();
+      if (sb.expandable) {
+        if (sb.$el.parents('.navbar-inner').hasClass('navbar-inner-large') && sb.$pageEl) {
+          sb.$pageEl.find('.page-content').addClass('with-searchbar-expandable-enabled');
+        }
+        if (app.theme === 'md' && sb.$el.parent('.navbar-inner').parent('.navbar').length) {
+          sb.$el.parent('.navbar-inner').parent('.navbar').addClass('with-searchbar-expandable-enabled');
+        } else {
+          sb.$el.parent('.navbar-inner').addClass('with-searchbar-expandable-enabled');
+          sb.$el.parent('.navbar-inner-large').addClass('navbar-inner-large-collapsed');
+        }
+      }
+      if (sb.$hideOnEnableEl) sb.$hideOnEnableEl.addClass('hidden-by-searchbar');
       sb.$el.trigger('searchbar:enable');
       sb.emit('local::enable searchbarEnable', sb);
     }
@@ -317,23 +345,35 @@ class Searchbar extends FrameworkClass {
     } else {
       if (needsFocus) sb.$inputEl.focus();
       if (app.theme === 'md' && sb.expandable) {
-        sb.$el.parents('.navbar-inner').scrollLeft(0);
+        sb.$el.parents('.page, .view, .navbar-inner').scrollLeft(0);
       }
       enable();
     }
     return sb;
   }
+
   disable() {
     const sb = this;
     if (!sb.enabled) return sb;
     const app = sb.app;
     sb.$inputEl.val('').trigger('change');
-    sb.$el.removeClass('searchbar-enabled');
-    sb.$el.removeClass('searchbar-focused');
+    sb.$el.removeClass('searchbar-enabled searchbar-focused searchbar-enabled-no-disable-button');
+    if (sb.expandable) {
+      if (sb.$el.parents('.navbar-inner').hasClass('navbar-inner-large') && sb.$pageEl) {
+        sb.$pageEl.find('.page-content').removeClass('with-searchbar-expandable-enabled');
+      }
+      if (app.theme === 'md' && sb.$el.parent('.navbar-inner').parent('.navbar').length) {
+        sb.$el.parent('.navbar-inner').parent('.navbar').removeClass('with-searchbar-expandable-enabled');
+      } else {
+        sb.$el.parent('.navbar-inner').removeClass('with-searchbar-expandable-enabled');
+        if (sb.$pageEl) {
+          sb.$pageEl.find('.page-content').trigger('scroll');
+        }
+      }
+    }
     if (!sb.expandable && sb.$disableButtonEl && sb.$disableButtonEl.length > 0 && app.theme === 'ios') {
       sb.$disableButtonEl.css(`margin-${app.rtl ? 'left' : 'right'}`, `${-sb.disableButtonEl.offsetWidth}px`);
     }
-
     if (sb.$backdropEl && ((sb.$searchContainer && sb.$searchContainer.length) || sb.params.customSearch)) {
       sb.backdropHide();
     }
@@ -342,18 +382,20 @@ class Searchbar extends FrameworkClass {
 
     sb.$inputEl.blur();
 
-    if (sb.$hideOnEnableEl) sb.$hideOnEnableEl.show();
+    if (sb.$hideOnEnableEl) sb.$hideOnEnableEl.removeClass('hidden-by-searchbar');
 
     sb.$el.trigger('searchbar:disable');
     sb.emit('local::disable searchbarDisable', sb);
     return sb;
   }
+
   toggle() {
     const sb = this;
     if (sb.enabled) sb.disable();
     else sb.enable(true);
     return sb;
   }
+
   backdropShow() {
     const sb = this;
     if (sb.$backdropEl) {
@@ -361,6 +403,7 @@ class Searchbar extends FrameworkClass {
     }
     return sb;
   }
+
   backdropHide() {
     const sb = this;
     if (sb.$backdropEl) {
@@ -368,34 +411,40 @@ class Searchbar extends FrameworkClass {
     }
     return sb;
   }
+
   search(query, internal) {
     const sb = this;
-    if (sb.previousQuery && query.trim() === sb.previousQuery) return sb;
-    if (typeof (sb.previousQuery) !== 'undefined' && sb.previousQuery.trim() === '' && query.trim() === '') return sb;
-    sb.previousQuery = query.trim();
+    sb.previousQuery = sb.query || '';
+    if (query === sb.previousQuery) return sb;
 
     if (!internal) {
       if (!sb.enabled) {
         sb.enable();
       }
       sb.$inputEl.val(query);
+      sb.$inputEl.trigger('input');
     }
     sb.query = query;
     sb.value = query;
 
-    const { $searchContainer, $el, $backdropEl, $foundEl, $notFoundEl, $hideOnSearchEl, isVirtualList } = sb;
+    const { $searchContainer, $el, $foundEl, $notFoundEl, $hideOnSearchEl, isVirtualList } = sb;
 
     // Hide on search element
     if (query.length > 0 && $hideOnSearchEl) {
-      $hideOnSearchEl.hide();
+      $hideOnSearchEl.addClass('hidden-by-searchbar');
     } else if ($hideOnSearchEl) {
-      $hideOnSearchEl.show();
+      $hideOnSearchEl.removeClass('hidden-by-searchbar');
     }
     // Add active/inactive classes on overlay
-    if (query.length === 0) {
-      if ($searchContainer && $searchContainer.length && $el.hasClass('searchbar-enabled') && $backdropEl) sb.backdropShow();
-    } else if ($searchContainer && $searchContainer.length && $el.hasClass('searchbar-enabled')) {
-      sb.backdropHide();
+    if (
+      ($searchContainer && $searchContainer.length && $el.hasClass('searchbar-enabled'))
+      || (sb.params.customSearch && $el.hasClass('searchbar-enabled'))
+    ) {
+      if (query.length === 0) {
+        sb.backdropShow();
+      } else {
+        sb.backdropHide();
+      }
     }
 
     if (sb.params.customSearch) {
@@ -412,6 +461,8 @@ class Searchbar extends FrameworkClass {
         sb.virtualList.resetFilter();
         if ($notFoundEl) $notFoundEl.hide();
         if ($foundEl) $foundEl.show();
+        $el.trigger('searchbar:search', query, sb.previousQuery);
+        sb.emit('local::search searchbarSearch', sb, query, sb.previousQuery);
         return sb;
       }
       vlQuery = sb.params.removeDiacritics ? Utils.removeDiacritics(query) : query;
@@ -455,13 +506,13 @@ class Searchbar extends FrameworkClass {
       });
 
       if (sb.params.hideDividers) {
-        $searchContainer.find('.item-divider, .list-group-title').each((titleIndex, titleEl) => {
+        $searchContainer.find(sb.params.searchGroupTitle).each((titleIndex, titleEl) => {
           const $titleEl = $(titleEl);
-          const $nextElements = $titleEl.nextAll('li');
+          const $nextElements = $titleEl.nextAll(sb.params.searchItem);
           let hide = true;
           for (let i = 0; i < $nextElements.length; i += 1) {
             const $nextEl = $nextElements.eq(i);
-            if ($nextEl.hasClass('list-group-title') || $nextEl.hasClass('item-divider')) break;
+            if ($nextEl.is(sb.params.searchGroupTitle)) break;
             if (!$nextEl.hasClass('hidden-by-searchbar')) {
               hide = false;
             }
@@ -472,10 +523,13 @@ class Searchbar extends FrameworkClass {
         });
       }
       if (sb.params.hideGroups) {
-        $searchContainer.find('.list-group').each((groupIndex, groupEl) => {
+        $searchContainer.find(sb.params.searchGroup).each((groupIndex, groupEl) => {
           const $groupEl = $(groupEl);
           const ignore = sb.params.ignore && $groupEl.is(sb.params.ignore);
-          const notHidden = $groupEl.find('li:not(.hidden-by-searchbar)');
+          // eslint-disable-next-line
+          const notHidden = $groupEl.find(sb.params.searchItem).filter((index, el) => {
+            return !$(el).hasClass('hidden-by-searchbar');
+          });
           if (notHidden.length === 0 && !ignore) {
             $groupEl.addClass('hidden-by-searchbar');
           } else {
@@ -501,16 +555,21 @@ class Searchbar extends FrameworkClass {
 
     return sb;
   }
+
   init() {
     const sb = this;
     sb.attachEvents();
   }
+
   destroy() {
     const sb = this;
     sb.emit('local::beforeDestroy searchbarBeforeDestroy', sb);
     sb.$el.trigger('searchbar:beforedestroy', sb);
     sb.detachEvents();
-    delete sb.$el.f7Searchbar;
+    if (sb.$el[0]) {
+      sb.$el[0].f7Searchbar = null;
+      delete sb.$el[0].f7Searchbar;
+    }
     Utils.deleteProps(sb);
   }
 }

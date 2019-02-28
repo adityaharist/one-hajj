@@ -1,4 +1,5 @@
 import $ from 'dom7';
+import { window } from 'ssr-window';
 import Utils from '../../utils/utils';
 import Modal from '../modal/modal-class';
 
@@ -74,11 +75,19 @@ class Toast extends Modal {
       window.clearTimeout(timeoutId);
     });
 
+    if (toast.params.destroyOnClose) {
+      toast.once('closed', () => {
+        setTimeout(() => {
+          toast.destroy();
+        }, 0);
+      });
+    }
+
     return toast;
   }
+
   render() {
     const toast = this;
-    const app = toast.app;
     if (toast.params.render) return toast.params.render.call(toast, toast);
     const { position, cssClass, icon, text, closeButton, closeButtonColor, closeButtonText } = toast.params;
     return `
@@ -87,7 +96,7 @@ class Toast extends Modal {
           ${icon ? `<div class="toast-icon">${icon}</div>` : ''}
           <div class="toast-text">${text}</div>
           ${closeButton && !icon ? `
-          <a class="toast-button ${app.theme === 'md' ? 'button' : 'link'} ${closeButtonColor ? `color-${closeButtonColor}` : ''}">${closeButtonText}</a>
+          <a class="toast-button button ${closeButtonColor ? `color-${closeButtonColor}` : ''}">${closeButtonText}</a>
           `.trim() : ''}
         </div>
       </div>

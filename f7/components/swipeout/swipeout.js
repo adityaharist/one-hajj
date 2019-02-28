@@ -1,4 +1,5 @@
 import $ from 'dom7';
+import { document } from 'ssr-window';
 import Utils from '../../utils/utils';
 
 const Swipeout = {
@@ -93,8 +94,7 @@ const Swipeout = {
 
       if (
         (translate > 0 && $actionsLeft.length === 0)
-        ||
-        (translate < 0 && $actionsRight.length === 0)
+        || (translate < 0 && $actionsRight.length === 0)
       ) {
         if (!opened) {
           isTouched = false;
@@ -165,8 +165,16 @@ const Swipeout = {
           if ($overswipeRightButton.length > 0 && $buttonEl.hasClass('swipeout-overswipe') && direction === 'to-left') {
             $buttonEl.css({ left: `${overswipeRight ? -buttonOffset : 0}px` });
             if (overswipeRight) {
+              if (!$buttonEl.hasClass('swipeout-overswipe-active')) {
+                $swipeoutEl.trigger('swipeout:overswipeenter');
+                app.emit('swipeoutOverswipeEnter', $swipeoutEl[0]);
+              }
               $buttonEl.addClass('swipeout-overswipe-active');
             } else {
+              if ($buttonEl.hasClass('swipeout-overswipe-active')) {
+                $swipeoutEl.trigger('swipeout:overswipeexit');
+                app.emit('swipeoutOverswipeExit', $swipeoutEl[0]);
+              }
               $buttonEl.removeClass('swipeout-overswipe-active');
             }
           }
@@ -197,8 +205,16 @@ const Swipeout = {
           if ($overswipeLeftButton.length > 0 && $buttonEl.hasClass('swipeout-overswipe') && direction === 'to-right') {
             $buttonEl.css({ left: `${overswipeLeft ? buttonOffset : 0}px` });
             if (overswipeLeft) {
+              if (!$buttonEl.hasClass('swipeout-overswipe-active')) {
+                $swipeoutEl.trigger('swipeout:overswipeenter');
+                app.emit('swipeoutOverswipeEnter', $swipeoutEl[0]);
+              }
               $buttonEl.addClass('swipeout-overswipe-active');
             } else {
+              if ($buttonEl.hasClass('swipeout-overswipe-active')) {
+                $swipeoutEl.trigger('swipeout:overswipeexit');
+                app.emit('swipeoutOverswipeExit', $swipeoutEl[0]);
+              }
               $buttonEl.removeClass('swipeout-overswipe-active');
             }
           }
@@ -231,18 +247,14 @@ const Swipeout = {
       if (
         (
           timeDiff < 300
-          &&
-          (
+          && (
             (touchesDiff < -10 && direction === 'to-left')
-            ||
-            (touchesDiff > 10 && direction === 'to-right')
+            || (touchesDiff > 10 && direction === 'to-right')
           )
         )
-        ||
-        (
+        || (
           timeDiff >= 300
-          &&
-          (Math.abs(translate) > actionsWidth / 2)
+          && (Math.abs(translate) > actionsWidth / 2)
         )
       ) {
         action = 'open';
@@ -326,12 +338,12 @@ const Swipeout = {
       if (Swipeout.el) {
         const $targetEl = $(e.target);
         if (!(
-          $(Swipeout.el).is($targetEl[0]) ||
-          $targetEl.parents('.swipeout').is(Swipeout.el) ||
-          $targetEl.hasClass('modal-in') ||
-          $targetEl[0].className.indexOf('-backdrop') > 0 ||
-          $targetEl.hasClass('actions-modal') ||
-          $targetEl.parents('.actions-modal.modal-in, .dialog.modal-in').length > 0
+          $(Swipeout.el).is($targetEl[0])
+          || $targetEl.parents('.swipeout').is(Swipeout.el)
+          || $targetEl.hasClass('modal-in')
+          || ($targetEl.attr('class') || '').indexOf('-backdrop') > 0
+          || $targetEl.hasClass('actions-modal')
+          || $targetEl.parents('.actions-modal.modal-in, .dialog.modal-in').length > 0
         )) {
           app.swipeout.close(Swipeout.el);
         }
@@ -455,6 +467,8 @@ const Swipeout = {
         $el.removeClass('swipeout-deleting swipeout-transitioning');
       }
     });
+    // eslint-disable-next-line
+    // $el[0]._clientLeft = $el[0].clientLeft;
     Utils.nextFrame(() => {
       $el
         .addClass('swipeout-deleting swipeout-transitioning')

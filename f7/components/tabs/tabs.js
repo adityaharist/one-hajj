@@ -4,6 +4,7 @@ import Utils from '../../utils/utils';
 const Tab = {
   show(...args) {
     const app = this;
+
     let tabEl;
     let tabLinkEl;
     let animate;
@@ -25,6 +26,9 @@ const Tab = {
     if (typeof animate === 'undefined') animate = true;
 
     const $newTabEl = $(tabEl);
+    if (tabRoute && $newTabEl[0]) {
+      $newTabEl[0].f7TabRoute = tabRoute;
+    }
 
     if ($newTabEl.length === 0 || $newTabEl.hasClass('tab-active')) {
       return {
@@ -75,8 +79,9 @@ const Tab = {
     }
 
     // Swipeable tabs
+    let swiper;
     if ($tabsEl.parent().hasClass('tabs-swipeable-wrap') && app.swiper) {
-      const swiper = $tabsEl.parent()[0].swiper;
+      swiper = $tabsEl.parent()[0].swiper;
       if (swiper && swiper.activeIndex !== $newTabEl.index()) {
         animated = true;
         swiper
@@ -84,21 +89,29 @@ const Tab = {
             tabsChanged();
           })
           .slideTo($newTabEl.index(), animate ? undefined : 0);
+      } else if (swiper && swiper.animating) {
+        animated = true;
+        swiper
+          .once('slideChangeTransitionEnd', () => {
+            tabsChanged();
+          });
       }
     }
 
     // Remove active class from old tabs
     const $oldTabEl = $tabsEl.children('.tab-active');
-    $oldTabEl
-      .removeClass('tab-active')
-      .trigger('tab:hide');
-    app.emit('tabHide', $oldTabEl[0]);
+    $oldTabEl.removeClass('tab-active');
+    if (!swiper || (swiper && !swiper.animating) || (swiper && tabRoute)) {
+      $oldTabEl.trigger('tab:hide');
+      app.emit('tabHide', $oldTabEl[0]);
+    }
 
     // Trigger 'show' event on new tab
-    $newTabEl
-      .addClass('tab-active')
-      .trigger('tab:show');
-    app.emit('tabShow', $newTabEl[0]);
+    $newTabEl.addClass('tab-active');
+    if (!swiper || (swiper && !swiper.animating) || (swiper && tabRoute)) {
+      $newTabEl.trigger('tab:show');
+      app.emit('tabShow', $newTabEl[0]);
+    }
 
     // Find related link for new tab
     if (!$tabLinkEl) {
@@ -138,7 +151,13 @@ const Tab = {
       if ($oldTabEl && $oldTabEl.length > 0) {
         // Search by id
         const oldTabId = $oldTabEl.attr('id');
-        if (oldTabId) $oldTabLinkEl = $(`.tab-link[href="#${oldTabId}"]`);
+        if (oldTabId) {
+          $oldTabLinkEl = $(`.tab-link[href="#${oldTabId}"]`);
+          // Search by data-route-tab-id
+          if (!$oldTabLinkEl || ($oldTabLinkEl && $oldTabLinkEl.length === 0)) {
+            $oldTabLinkEl = $(`.tab-link[data-route-tab-id="${oldTabId}"]`);
+          }
+        }
         // Search by data-tab
         if (!$oldTabLinkEl || ($oldTabLinkEl && $oldTabLinkEl.length === 0)) {
           $('[data-tab]').each((index, tabLinkElement) => {

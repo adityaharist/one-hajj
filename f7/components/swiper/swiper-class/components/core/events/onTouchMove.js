@@ -1,13 +1,19 @@
-import document from '../../../utils/document';
+import { document } from 'ssr-window';
 import $ from '../../../utils/dom';
 import Utils from '../../../utils/utils';
 
 export default function (event) {
   const swiper = this;
   const data = swiper.touchEventsData;
-  const { params, touches, rtl } = swiper;
+  const { params, touches, rtlTranslate: rtl } = swiper;
   let e = event;
   if (e.originalEvent) e = e.originalEvent;
+  if (!data.isTouched) {
+    if (data.startMoving && data.isScrolling) {
+      swiper.emit('touchMoveOpposite', e);
+    }
+    return;
+  }
   if (data.isTouchEvent && e.type === 'mousemove') return;
   const pageX = e.type === 'touchmove' ? e.targetTouches[0].pageX : e.pageX;
   const pageY = e.type === 'touchmove' ? e.targetTouches[0].pageY : e.pageY;
@@ -34,16 +40,16 @@ export default function (event) {
     if (swiper.isVertical()) {
       // Vertical
       if (
-        (pageY < touches.startY && swiper.translate <= swiper.maxTranslate()) ||
-        (pageY > touches.startY && swiper.translate >= swiper.minTranslate())
+        (pageY < touches.startY && swiper.translate <= swiper.maxTranslate())
+        || (pageY > touches.startY && swiper.translate >= swiper.minTranslate())
       ) {
         data.isTouched = false;
         data.isMoved = false;
         return;
       }
     } else if (
-      (pageX < touches.startX && swiper.translate <= swiper.maxTranslate()) ||
-      (pageX > touches.startX && swiper.translate >= swiper.minTranslate())
+      (pageX < touches.startX && swiper.translate <= swiper.maxTranslate())
+      || (pageX > touches.startX && swiper.translate >= swiper.minTranslate())
     ) {
       return;
     }
@@ -65,6 +71,7 @@ export default function (event) {
 
   const diffX = touches.currentX - touches.startX;
   const diffY = touches.currentY - touches.startY;
+  if (swiper.params.threshold && Math.sqrt((diffX ** 2) + (diffY ** 2)) < swiper.params.threshold) return;
 
   if (typeof data.isScrolling === 'undefined') {
     let touchAngle;
@@ -81,12 +88,11 @@ export default function (event) {
   if (data.isScrolling) {
     swiper.emit('touchMoveOpposite', e);
   }
-  if (typeof startMoving === 'undefined') {
+  if (typeof data.startMoving === 'undefined') {
     if (touches.currentX !== touches.startX || touches.currentY !== touches.startY) {
       data.startMoving = true;
     }
   }
-  if (!data.isTouched) return;
   if (data.isScrolling) {
     data.isTouched = false;
     return;

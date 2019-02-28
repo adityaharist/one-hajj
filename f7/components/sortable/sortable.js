@@ -1,4 +1,5 @@
 import $ from 'dom7';
+import { document } from 'ssr-window';
 import Utils from '../../utils/utils';
 
 const Sortable = {
@@ -32,6 +33,10 @@ const Sortable = {
       $sortingEl = $(this).parent('li');
       indexFrom = $sortingEl.index();
       $sortableContainer = $sortingEl.parents('.sortable');
+      const $listGroup = $sortingEl.parents('.list-group');
+      if ($listGroup.length && $listGroup.parents($sortableContainer).length) {
+        $sortableContainer = $listGroup;
+      }
       $sortingItems = $sortableContainer.children('ul').children('li');
       if (app.panel) app.panel.allowOpen = false;
       if (app.swipeout) app.swipeout.allow = false;
@@ -130,25 +135,42 @@ const Sortable = {
       $sortingEl.removeClass('sorting');
       $sortableContainer.removeClass('sortable-sorting');
 
-      let virtualList;
-      let oldIndex;
-      let newIndex;
-      if ($insertAfterEl) {
-        $sortingEl.insertAfter($insertAfterEl);
-      }
-      if ($insertBeforeEl) {
-        $sortingEl.insertBefore($insertBeforeEl);
+      let indexTo;
+      if ($insertAfterEl) indexTo = $insertAfterEl.index();
+      else if ($insertBeforeEl) indexTo = $insertBeforeEl.index();
+
+      if (app.params.sortable.moveElements) {
+        if ($insertAfterEl) {
+          $sortingEl.insertAfter($insertAfterEl);
+        }
+        if ($insertBeforeEl) {
+          $sortingEl.insertBefore($insertBeforeEl);
+        }
       }
 
-      $sortingEl.trigger('sortable:sort', { from: indexFrom, to: $sortingEl.index() });
-      app.emit('sortableSort', $sortingEl[0], { from: indexFrom, to: $sortingEl.index() });
+      if (($insertAfterEl || $insertBeforeEl)
+         && $sortableContainer.hasClass('virtual-list')
+      ) {
+        indexFrom = $sortingEl[0].f7VirtualListIndex;
+        if (typeof indexFrom === 'undefined') indexFrom = $sortingEl.attr('data-virtual-list-index');
+        if ($insertBeforeEl) {
+          indexTo = $insertBeforeEl[0].f7VirtualListIndex;
+          if (typeof indexTo === 'undefined') indexTo = $insertBeforeEl.attr('data-virtual-list-index');
+        } else {
+          indexTo = $insertAfterEl[0].f7VirtualListIndex;
+          if (typeof indexTo === 'undefined') indexTo = $insertAfterEl.attr('data-virtual-list-index');
+        }
+        if (indexTo !== null) indexTo = parseInt(indexTo, 10);
+        else indexTo = undefined;
 
-      if (($insertAfterEl || $insertBeforeEl) && $sortableContainer.hasClass('virtual-list')) {
-        virtualList = $sortableContainer[0].f7VirtualList;
-        oldIndex = $sortingEl[0].f7VirtualListIndex;
-        newIndex = $insertBeforeEl ? $insertBeforeEl[0].f7VirtualListIndex : $insertAfterEl[0].f7VirtualListIndex;
-        if (virtualList) virtualList.moveItem(oldIndex, newIndex);
+        const virtualList = $sortableContainer[0].f7VirtualList;
+        if (virtualList) virtualList.moveItem(indexFrom, indexTo);
       }
+      if (typeof indexTo !== 'undefined' && !Number.isNaN(indexTo) && indexTo !== indexFrom) {
+        $sortingEl.trigger('sortable:sort', { from: indexFrom, to: indexTo });
+        app.emit('sortableSort', $sortingEl[0], { from: indexFrom, to: indexTo });
+      }
+
       $insertBeforeEl = undefined;
       $insertAfterEl = undefined;
       isTouched = false;
@@ -191,7 +213,9 @@ const Sortable = {
 export default {
   name: 'sortable',
   params: {
-    sortable: true,
+    sortable: {
+      moveElements: true,
+    },
   },
   create() {
     const app = this;
@@ -207,7 +231,8 @@ export default {
   on: {
     init() {
       const app = this;
-      if (app.params.sortable) app.sortable.init();
+      if (!app.params.sortable) return;
+      app.sortable.init();
     },
   },
   clicks: {

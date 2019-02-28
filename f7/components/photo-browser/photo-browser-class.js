@@ -43,6 +43,7 @@ class PhotoBrowser extends Framework7Class {
     // Init
     pb.init();
   }
+
   onSlideChange(swiper) {
     const pb = this;
     pb.activeIndex = swiper.activeIndex;
@@ -88,12 +89,14 @@ class PhotoBrowser extends Framework7Class {
       if ('pause' in previousSlideVideo[0]) previousSlideVideo[0].pause();
     }
   }
+
   onTouchStart() {
     const pb = this;
     const swipeToClose = pb.swipeToClose;
     if (!swipeToClose.allow) return;
     swipeToClose.isTouched = true;
   }
+
   onTouchMove(e) {
     const pb = this;
     const swipeToClose = pb.swipeToClose;
@@ -117,6 +120,7 @@ class PhotoBrowser extends Framework7Class {
     swipeToClose.activeSlide.transform(`translate3d(0,${-swipeToClose.diff}px,0)`);
     pb.swiper.$el.css('background-color', `rgba(${color}, ${color}, ${color}, ${opacity})`).transition(0);
   }
+
   onTouchEnd() {
     const pb = this;
     const swipeToClose = pb.swipeToClose;
@@ -184,6 +188,7 @@ class PhotoBrowser extends Framework7Class {
     `.trim();
     return navbarHtml;
   }
+
   renderToolbar() {
     const pb = this;
     if (pb.params.renderToolbar) return pb.params.renderToolbar.call(pb);
@@ -192,7 +197,7 @@ class PhotoBrowser extends Framework7Class {
     if (!pb.params.iconsColor && pb.params.theme === 'dark') iconsColor = 'white';
 
     const toolbarHtml = `
-      <div class="toolbar tabbar toolbar-bottom-md">
+      <div class="toolbar toolbar-bottom tabbar">
         <div class="toolbar-inner">
           <a href="#" class="link photo-browser-prev">
             <i class="icon icon-back ${iconsColor ? `color-${iconsColor}` : ''}"></i>
@@ -205,6 +210,7 @@ class PhotoBrowser extends Framework7Class {
     `.trim();
     return toolbarHtml;
   }
+
   renderCaption(caption, index) {
     const pb = this;
     if (pb.params.renderCaption) return pb.params.renderCaption.call(pb, caption, index);
@@ -215,6 +221,7 @@ class PhotoBrowser extends Framework7Class {
     `.trim();
     return captionHtml;
   }
+
   renderObject(photo, index) {
     const pb = this;
     if (pb.params.renderObject) return pb.params.renderObject.call(pb, photo, index);
@@ -223,12 +230,13 @@ class PhotoBrowser extends Framework7Class {
     `;
     return objHtml;
   }
+
   renderLazyPhoto(photo, index) {
     const pb = this;
     if (pb.params.renderLazyPhoto) return pb.params.renderLazyPhoto.call(pb, photo, index);
     const photoHtml = `
       <div class="photo-browser-slide photo-browser-slide-lazy swiper-slide" data-swiper-slide-index="${index}">
-          <div class="preloader swiper-lazy-preloader ${pb.params.theme === 'dark' ? 'color-white' : ''}">${pb.app.theme === 'md' ? Utils.mdPreloaderContent : ''}</div>
+          <div class="preloader swiper-lazy-preloader ${pb.params.theme === 'dark' ? 'color-white' : ''}">${Utils[`${pb.app.theme}PreloaderContent`] || ''}</div>
           <span class="swiper-zoom-container">
               <img data-src="${photo.url ? photo.url : photo}" class="swiper-lazy">
           </span>
@@ -236,6 +244,7 @@ class PhotoBrowser extends Framework7Class {
     `.trim();
     return photoHtml;
   }
+
   renderPhoto(photo, index) {
     const pb = this;
     if (pb.params.renderPhoto) return pb.params.renderPhoto.call(pb, photo, index);
@@ -248,6 +257,7 @@ class PhotoBrowser extends Framework7Class {
     `.trim();
     return photoHtml;
   }
+
   render() {
     const pb = this;
     if (pb.params.render) return pb.params.render.call(pb, pb.params);
@@ -268,7 +278,8 @@ class PhotoBrowser extends Framework7Class {
                 ${pb.params.virtualSlides ? '' : pb.params.photos.map((photo, index) => {
                   if (photo.html || ((typeof photo === 'string' || photo instanceof String) && photo.indexOf('<') >= 0 && photo.indexOf('>') >= 0)) {
                     return pb.renderObject(photo, index);
-                  } else if (pb.params.swiper.lazy === true || (pb.params.swiper.lazy && pb.params.swiper.lazy.enabled)) {
+                  }
+                  if (pb.params.swiper.lazy === true || (pb.params.swiper.lazy && pb.params.swiper.lazy.enabled)) {
                     return pb.renderLazyPhoto(photo, index);
                   }
                   return pb.renderPhoto(photo, index);
@@ -281,12 +292,14 @@ class PhotoBrowser extends Framework7Class {
     `.trim();
     return html;
   }
+
   renderStandalone() {
     const pb = this;
     if (pb.params.renderStandalone) return pb.params.renderStandalone.call(pb);
     const standaloneHtml = `<div class="popup photo-browser-popup photo-browser-standalone popup-tablet-fullscreen">${pb.render()}</div>`;
     return standaloneHtml;
   }
+
   renderPage() {
     const pb = this;
     if (pb.params.renderPage) return pb.params.renderPage.call(pb);
@@ -294,6 +307,7 @@ class PhotoBrowser extends Framework7Class {
 
     return pageHtml;
   }
+
   renderPopup() {
     const pb = this;
     if (pb.params.renderPopup) return pb.params.renderPopup.call(pb);
@@ -348,10 +362,10 @@ class PhotoBrowser extends Framework7Class {
         transitionEnd(...args) {
           pb.emit('local::transitionEnd', ...args);
         },
-        slideChangeStart(...args) {
+        slideChangeTransitionStart(...args) {
           pb.emit('local::slideChangeTransitionStart', ...args);
         },
-        slideChangeEnd(...args) {
+        slideChangeTransitionEnd(...args) {
           pb.emit('local::slideChangeTransitionEnd', ...args);
         },
         lazyImageLoad(...args) {
@@ -387,7 +401,8 @@ class PhotoBrowser extends Framework7Class {
           renderSlide(photo, index) {
             if (photo.html || ((typeof photo === 'string' || photo instanceof String) && photo.indexOf('<') >= 0 && photo.indexOf('>') >= 0)) {
               return pb.renderObject(photo, index);
-            } else if (pb.params.swiper.lazy === true || (pb.params.swiper.lazy && pb.params.swiper.lazy.enabled)) {
+            }
+            if (pb.params.swiper.lazy === true || (pb.params.swiper.lazy && pb.params.swiper.lazy.enabled)) {
               return pb.renderLazyPhoto(photo, index);
             }
             return pb.renderPhoto(photo, index);
@@ -406,6 +421,7 @@ class PhotoBrowser extends Framework7Class {
     }
     pb.emit('local::open photoBrowserOpen', pb);
   }
+
   onOpened() {
     const pb = this;
 
@@ -414,6 +430,7 @@ class PhotoBrowser extends Framework7Class {
     }
     pb.emit('local::opened photoBrowserOpened', pb);
   }
+
   onClose() {
     const pb = this;
     if (pb.destroyed) return;
@@ -429,6 +446,7 @@ class PhotoBrowser extends Framework7Class {
     }
     pb.emit('local::close photoBrowserClose', pb);
   }
+
   onClosed() {
     const pb = this;
     if (pb.destroyed) return;
@@ -564,6 +582,7 @@ class PhotoBrowser extends Framework7Class {
     pb.exposed = true;
     return pb;
   }
+
   expositionDisable() {
     const pb = this;
     if (pb.params.type === 'page') {
@@ -574,6 +593,7 @@ class PhotoBrowser extends Framework7Class {
     pb.exposed = false;
     return pb;
   }
+
   expositionToggle() {
     const pb = this;
     if (pb.params.type === 'page') {
@@ -584,6 +604,7 @@ class PhotoBrowser extends Framework7Class {
     pb.exposed = !pb.exposed;
     return pb;
   }
+
   open(index) {
     const pb = this;
     const type = pb.params.type;
@@ -592,7 +613,8 @@ class PhotoBrowser extends Framework7Class {
         pb.swiper.slideTo(parseInt(index, 10));
       }
       return pb;
-    } else if (typeof index !== 'undefined') {
+    }
+    if (typeof index !== 'undefined') {
       pb.activeIndex = index;
     }
     if (type === 'standalone') {
@@ -606,6 +628,7 @@ class PhotoBrowser extends Framework7Class {
     }
     return pb;
   }
+
   close() {
     const pb = this;
     if (!pb.opened) return pb;
@@ -624,11 +647,13 @@ class PhotoBrowser extends Framework7Class {
   }
   // eslint-disable-next-line
   init() {}
+
   destroy() {
     let pb = this;
     pb.emit('local::beforeDestroy photoBrowserBeforeDestroy', pb);
     if (pb.$el) {
       pb.$el.trigger('photobrowser:beforedestroy');
+      pb.$el[0].f7PhotoBrowser = null;
       delete pb.$el[0].f7PhotoBrowser;
     }
     Utils.deleteProps(pb);

@@ -1,5 +1,4 @@
-import window from '../../utils/window';
-import document from '../../utils/document';
+import { window, document } from 'ssr-window';
 import $ from '../../utils/dom';
 import Utils from '../../utils/utils';
 
@@ -9,7 +8,9 @@ const HashNavigation = {
     const newHash = document.location.hash.replace('#', '');
     const activeSlideHash = swiper.slides.eq(swiper.activeIndex).attr('data-hash');
     if (newHash !== activeSlideHash) {
-      swiper.slideTo(swiper.$wrapperEl.children(`.${swiper.params.slideClass}[data-hash="${newHash}"]`).index());
+      const newIndex = swiper.$wrapperEl.children(`.${swiper.params.slideClass}[data-hash="${newHash}"]`).index();
+      if (typeof newIndex === 'undefined') return;
+      swiper.slideTo(newIndex);
     }
   },
   setHash() {

@@ -5,7 +5,9 @@ import Browser from '../../utils/browser';
 const Cube = {
   setTranslate() {
     const swiper = this;
-    const { $el, $wrapperEl, slides, width: swiperWidth, height: swiperHeight, rtl, size: swiperSize } = swiper;
+    const {
+      $el, $wrapperEl, slides, width: swiperWidth, height: swiperHeight, rtlTranslate: rtl, size: swiperSize,
+    } = swiper;
     const params = swiper.params.cubeEffect;
     const isHorizontal = swiper.isHorizontal();
     const isVirtual = swiper.virtual && swiper.params.virtual.enabled;
@@ -100,8 +102,8 @@ const Cube = {
       } else {
         const shadowAngle = Math.abs(wrapperRotate) - (Math.floor(Math.abs(wrapperRotate) / 90) * 90);
         const multiplier = 1.5 - (
-          (Math.sin((shadowAngle * 2 * Math.PI) / 360) / 2) +
-          (Math.cos((shadowAngle * 2 * Math.PI) / 360) / 2)
+          (Math.sin((shadowAngle * 2 * Math.PI) / 360) / 2)
+          + (Math.cos((shadowAngle * 2 * Math.PI) / 360) / 2)
         );
         const scale1 = params.shadowScale;
         const scale2 = params.shadowScale / multiplier;

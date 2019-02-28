@@ -45,8 +45,6 @@ export default {
       xhrCacheIgnoreGetParameters: false,
       xhrCacheDuration: 1000 * 60 * 10, // Ten minutes
       preloadPreviousPage: true,
-      uniqueHistory: false,
-      uniqueHistoryIgnoreGetParameters: false,
       allowDuplicateUrls: false,
       reloadPages: false,
       removeElements: true,
@@ -62,6 +60,11 @@ export default {
       iosSwipeBackAnimateOpacity: true,
       iosSwipeBackActiveArea: 30,
       iosSwipeBackThreshold: 0,
+      mdSwipeBack: false,
+      mdSwipeBackAnimateShadow: true,
+      mdSwipeBackAnimateOpacity: false,
+      mdSwipeBackActiveArea: 30,
+      mdSwipeBackThreshold: 0,
       // Push State
       pushState: false,
       pushStateRoot: undefined,
@@ -71,7 +74,6 @@ export default {
       pushStateOnLoad: true,
       // Animate Pages
       animate: true,
-      animateWithJS: false,
       // iOS Dynamic Navbar
       iosDynamicNavbar: true,
       iosSeparateDynamicNavbar: true,
@@ -79,7 +81,10 @@ export default {
       iosAnimateNavbarBackIcon: true,
       // Delays
       iosPageLoadDelay: 0,
-      materialPageLoadDelay: 0,
+      mdPageLoadDelay: 0,
+      // Routes hooks
+      routesBeforeEnter: null,
+      routesBeforeLeave: null,
     },
   },
   static: {
@@ -136,4 +141,3 @@ export default {
     },
   },
 };
-

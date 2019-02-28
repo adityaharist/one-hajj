@@ -14,6 +14,8 @@ export default {
       preloaderTitle: 'Loading... ',
       progressTitle: 'Loading... ',
       closeByBackdropClick: false,
+      destroyPredefinedDialogs: true,
+      keyboardActions: true,
     },
   },
   static: {
@@ -21,7 +23,11 @@ export default {
   },
   create() {
     const app = this;
-    const defaultDialogTitle = app.params.dialog.title || app.name;
+    function defaultDialogTitle() {
+      return app.params.dialog.title || app.name;
+    }
+    const destroyOnClose = app.params.dialog.destroyPredefinedDialogs;
+    const keyboardActions = app.params.dialog.keyboardActions;
     app.dialog = Utils.extend(
       ModalMethods({
         app,
@@ -36,31 +42,36 @@ export default {
             [text, callbackOk, title] = args;
           }
           return new Dialog(app, {
-            title: typeof title === 'undefined' ? defaultDialogTitle : title,
+            title: typeof title === 'undefined' ? defaultDialogTitle() : title,
             text,
             buttons: [{
               text: app.params.dialog.buttonOk,
               bold: true,
               onClick: callbackOk,
+              keyCodes: keyboardActions ? [13, 27] : null,
             }],
+            destroyOnClose,
           }).open();
         },
         prompt(...args) {
-          let [text, title, callbackOk, callbackCancel] = args;
+          let [text, title, callbackOk, callbackCancel, defaultValue] = args;
           if (typeof args[1] === 'function') {
-            [text, callbackOk, callbackCancel, title] = args;
+            [text, callbackOk, callbackCancel, defaultValue, title] = args;
           }
+          defaultValue = typeof defaultValue === 'undefined' || defaultValue === null ? '' : defaultValue;
           return new Dialog(app, {
-            title: typeof title === 'undefined' ? defaultDialogTitle : title,
+            title: typeof title === 'undefined' ? defaultDialogTitle() : title,
             text,
-            content: '<div class="dialog-input-field item-input"><div class="item-input-wrap"><input type="text" class="dialog-input"></div></div>',
+            content: `<div class="dialog-input-field input"><input type="text" class="dialog-input" value="${defaultValue}"></div>`,
             buttons: [
               {
                 text: app.params.dialog.buttonCancel,
+                keyCodes: keyboardActions ? [27] : null,
               },
               {
                 text: app.params.dialog.buttonOk,
                 bold: true,
+                keyCodes: keyboardActions ? [13] : null,
               },
             ],
             onClick(dialog, index) {
@@ -68,6 +79,7 @@ export default {
               if (index === 0 && callbackCancel) callbackCancel(inputValue);
               if (index === 1 && callbackOk) callbackOk(inputValue);
             },
+            destroyOnClose,
           }).open();
         },
         confirm(...args) {
@@ -76,19 +88,22 @@ export default {
             [text, callbackOk, callbackCancel, title] = args;
           }
           return new Dialog(app, {
-            title: typeof title === 'undefined' ? defaultDialogTitle : title,
+            title: typeof title === 'undefined' ? defaultDialogTitle() : title,
             text,
             buttons: [
               {
                 text: app.params.dialog.buttonCancel,
                 onClick: callbackCancel,
+                keyCodes: keyboardActions ? [27] : null,
               },
               {
                 text: app.params.dialog.buttonOk,
                 bold: true,
                 onClick: callbackOk,
+                keyCodes: keyboardActions ? [13] : null,
               },
             ],
+            destroyOnClose,
           }).open();
         },
         login(...args) {
@@ -97,26 +112,24 @@ export default {
             [text, callbackOk, callbackCancel, title] = args;
           }
           return new Dialog(app, {
-            title: typeof title === 'undefined' ? defaultDialogTitle : title,
+            title: typeof title === 'undefined' ? defaultDialogTitle() : title,
             text,
             content: `
-              <div class="dialog-input-field dialog-input-double item-input">
-                <div class="item-input-wrap">
-                  <input type="text" name="dialog-username" placeholder="${app.params.dialog.usernamePlaceholder}" class="dialog-input">
-                </div>
+              <div class="dialog-input-field dialog-input-double input">
+                <input type="text" name="dialog-username" placeholder="${app.params.dialog.usernamePlaceholder}" class="dialog-input">
               </div>
-              <div class="dialog-input-field dialog-input-double item-input">
-                <div class="item-input-wrap">
-                  <input type="password" name="dialog-password" placeholder="${app.params.dialog.passwordPlaceholder}" class="dialog-input">
-                </div>
+              <div class="dialog-input-field dialog-input-double input">
+                <input type="password" name="dialog-password" placeholder="${app.params.dialog.passwordPlaceholder}" class="dialog-input">
               </div>`,
             buttons: [
               {
                 text: app.params.dialog.buttonCancel,
+                keyCodes: keyboardActions ? [27] : null,
               },
               {
                 text: app.params.dialog.buttonOk,
                 bold: true,
+                keyCodes: keyboardActions ? [13] : null,
               },
             ],
             onClick(dialog, index) {
@@ -125,6 +138,7 @@ export default {
               if (index === 0 && callbackCancel) callbackCancel(username, password);
               if (index === 1 && callbackOk) callbackOk(username, password);
             },
+            destroyOnClose,
           }).open();
         },
         password(...args) {
@@ -133,21 +147,21 @@ export default {
             [text, callbackOk, callbackCancel, title] = args;
           }
           return new Dialog(app, {
-            title: typeof title === 'undefined' ? defaultDialogTitle : title,
+            title: typeof title === 'undefined' ? defaultDialogTitle() : title,
             text,
             content: `
-              <div class="dialog-input-field item-input">
-                <div class="item-input-wrap">
-                  <input type="password" name="dialog-password" placeholder="${app.params.dialog.passwordPlaceholder}" class="dialog-input">
-                </div>
+              <div class="dialog-input-field input">
+                <input type="password" name="dialog-password" placeholder="${app.params.dialog.passwordPlaceholder}" class="dialog-input">
               </div>`,
             buttons: [
               {
                 text: app.params.dialog.buttonCancel,
+                keyCodes: keyboardActions ? [27] : null,
               },
               {
                 text: app.params.dialog.buttonOk,
                 bold: true,
+                keyCodes: keyboardActions ? [13] : null,
               },
             ],
             onClick(dialog, index) {
@@ -155,14 +169,16 @@ export default {
               if (index === 0 && callbackCancel) callbackCancel(password);
               if (index === 1 && callbackOk) callbackOk(password);
             },
+            destroyOnClose,
           }).open();
         },
-        preloader(title) {
-          const preloaderInner = app.theme !== 'md' ? '' : Utils.mdPreloaderContent;
+        preloader(title, color) {
+          const preloaderInner = Utils[`${app.theme}PreloaderContent`] || '';
           return new Dialog(app, {
-            title: typeof title === 'undefined' ? app.params.dialog.preloaderTitle : title,
-            content: `<div class="preloader">${preloaderInner}</div>`,
+            title: typeof title === 'undefined' || title === null ? app.params.dialog.preloaderTitle : title,
+            content: `<div class="preloader${color ? ` color-${color}` : ''}">${preloaderInner}</div>`,
             cssClass: 'dialog-preloader',
+            destroyOnClose,
           }).open();
         },
         progress(...args) {
@@ -187,18 +203,12 @@ export default {
                 ${!infinite ? '<span></span>' : ''}
               </div>
             `,
+            destroyOnClose,
           });
           if (!infinite) dialog.setProgress(progress);
           return dialog.open();
         },
       }
     );
-  },
-  clicks: {
-    '.dialog-backdrop': function closeDialog() {
-      const app = this;
-      if (!app.params.dialog.closeByBackdropClick) return;
-      app.dialog.close();
-    },
   },
 };

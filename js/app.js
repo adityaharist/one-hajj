@@ -11,7 +11,7 @@ Framework7.use(Framework7Keypad);
 
 // Init App
 var app = new Framework7({
-  id: 'com.skripsi.panduan.haji',
+  id: 'com.hidroponik.app',
   root: '#app',
   theme: theme,
   data: function () {

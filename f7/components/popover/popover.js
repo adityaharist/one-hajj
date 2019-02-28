@@ -42,10 +42,5 @@ export default {
       const app = this;
       app.popover.close(data.popover, data.animate);
     },
-    '.popover-backdrop': function closePopover() {
-      const app = this;
-      if (!app.params.popover.closeByBackdropClick) return;
-      app.popover.close();
-    },
   },
 };

@@ -1,3 +1,5 @@
+/* eslint no-control-regex: "off" */
+import { window } from 'ssr-window';
 import bezier from './bezier';
 
 // Remove Diacritics
@@ -98,50 +100,17 @@ for (let i = 0; i < defaultDiacriticsRemovalap.length; i += 1) {
   }
 }
 
-const createPromise = function createPromise(handler) {
-  let resolved = false;
-  let rejected = false;
-  let resolveArgs;
-  let rejectArgs;
-  const promiseHandlers = {
-    then: undefined,
-    catch: undefined,
-  };
-  const promise = {
-    then(thenHandler) {
-      if (resolved) {
-        thenHandler(...resolveArgs);
-      } else {
-        promiseHandlers.then = thenHandler;
-      }
-      return promise;
-    },
-    catch(catchHandler) {
-      if (rejected) {
-        catchHandler(...rejectArgs);
-      } else {
-        promiseHandlers.catch = catchHandler;
-      }
-      return promise;
-    },
-  };
-
-  function resolve(...args) {
-    resolved = true;
-    if (promiseHandlers.then) promiseHandlers.then(...args);
-    else resolveArgs = args;
-  }
-  function reject(...args) {
-    rejected = true;
-    if (promiseHandlers.catch) promiseHandlers.catch(...args);
-    else rejectArgs = args;
-  }
-  handler(resolve, reject);
-
-  return promise;
-};
+let uniqueNumber = 1;
 
 const Utils = {
+  uniqueNumber() {
+    uniqueNumber += 1;
+    return uniqueNumber;
+  },
+  id(mask = 'xxxxxxxxxx', map = '0123456789abcdef') {
+    const length = map.length;
+    return mask.replace(/x/g, () => map[Math.floor((Math.random() * length))]);
+  },
   mdPreloaderContent: `
     <span class="preloader-inner">
       <span class="preloader-inner-gap"></span>
@@ -151,6 +120,11 @@ const Utils = {
       <span class="preloader-inner-right">
           <span class="preloader-inner-half-circle"></span>
       </span>
+    </span>
+  `.trim(),
+  iosPreloaderContent: `
+    <span class="preloader-inner">
+      ${Array.from({ length: 12 }).map(() => '<span class="preloader-inner-line"></span>').join('')}
     </span>
   `.trim(),
   eventNameToColonCase(eventName) {
@@ -169,7 +143,7 @@ const Utils = {
       try {
         object[key] = null;
       } catch (e) {
-        // no getter for object
+        // no setter for object
       }
       try {
         delete object[key];
@@ -185,22 +159,21 @@ const Utils = {
     return setTimeout(callback, delay);
   },
   nextFrame(callback) {
-    return Utils.requestAnimationFrame(callback);
+    return Utils.requestAnimationFrame(() => {
+      Utils.requestAnimationFrame(callback);
+    });
   },
   now() {
     return Date.now();
   },
-  promise(handler) {
-    return window.Promise ? new Promise(handler) : createPromise(handler);
-  },
   requestAnimationFrame(callback) {
     if (window.requestAnimationFrame) return window.requestAnimationFrame(callback);
-    else if (window.webkitRequestAnimationFrame) return window.webkitRequestAnimationFrame(callback);
+    if (window.webkitRequestAnimationFrame) return window.webkitRequestAnimationFrame(callback);
     return window.setTimeout(callback, 1000 / 60);
   },
   cancelAnimationFrame(id) {
     if (window.cancelAnimationFrame) return window.cancelAnimationFrame(id);
-    else if (window.webkitCancelAnimationFrame) return window.webkitCancelAnimationFrame(id);
+    if (window.webkitCancelAnimationFrame) return window.webkitCancelAnimationFrame(id);
     return window.clearTimeout(id);
   },
   removeDiacritics(str) {
@@ -220,7 +193,7 @@ const Utils = {
 
       for (i = 0; i < length; i += 1) {
         param = params[i].replace(/#\S+/g, '').split('=');
-        query[decodeURIComponent(param[0])] = typeof param[1] === 'undefined' ? undefined : decodeURIComponent(param[1]) || '';
+        query[decodeURIComponent(param[0])] = typeof param[1] === 'undefined' ? undefined : decodeURIComponent(param.slice(1).join('=')) || '';
       }
     }
     return query;
@@ -315,6 +288,26 @@ const Utils = {
   isObject(o) {
     return typeof o === 'object' && o !== null && o.constructor && o.constructor === Object;
   },
+  merge(...args) {
+    const to = args[0];
+    args.splice(0, 1);
+    const from = args;
+
+    for (let i = 0; i < from.length; i += 1) {
+      const nextSource = args[i];
+      if (nextSource !== undefined && nextSource !== null) {
+        const keysArray = Object.keys(Object(nextSource));
+        for (let nextIndex = 0, len = keysArray.length; nextIndex < len; nextIndex += 1) {
+          const nextKey = keysArray[nextIndex];
+          const desc = Object.getOwnPropertyDescriptor(nextSource, nextKey);
+          if (desc !== undefined && desc.enumerable) {
+            to[nextKey] = nextSource[nextKey];
+          }
+        }
+      }
+    }
+    return to;
+  },
   extend(...args) {
     let deep = true;
     let to;
@@ -352,6 +345,75 @@ const Utils = {
       }
     }
     return to;
+  },
+  colorHexToRgb(hex) {
+    const h = hex.replace(/^#?([a-f\d])([a-f\d])([a-f\d])$/i, (m, r, g, b) => r + r + g + g + b + b);
+    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(h);
+    return result
+      ? result.slice(1).map(n => parseInt(n, 16))
+      : null;
+  },
+  colorRgbToHex(r, g, b) {
+    const result = [r, g, b].map((n) => {
+      const hex = n.toString(16);
+      return hex.length === 1 ? `0${hex}` : hex;
+    }).join('');
+    return `#${result}`;
+  },
+  colorRgbToHsl(r, g, b) {
+    r /= 255; // eslint-disable-line
+    g /= 255; // eslint-disable-line
+    b /= 255; // eslint-disable-line
+    const max = Math.max(r, g, b);
+    const min = Math.min(r, g, b);
+    const d = max - min;
+    let h;
+    if (d === 0) h = 0;
+    else if (max === r) h = ((g - b) / d) % 6;
+    else if (max === g) h = (b - r) / d + 2;
+    else if (max === b) h = (r - g) / d + 4;
+    const l = (min + max) / 2;
+    const s = d === 0 ? 0 : d / (1 - Math.abs(2 * l - 1));
+    return [h * 60, s, l];
+  },
+  colorHslToRgb(h, s, l) {
+    const c = (1 - Math.abs(2 * l - 1)) * s;
+    const hp = h / 60;
+    const x = c * (1 - Math.abs((hp % 2) - 1));
+    let rgb1;
+    if (Number.isNaN(h) || typeof h === 'undefined') {
+      rgb1 = [0, 0, 0];
+    } else if (hp <= 1) rgb1 = [c, x, 0];
+    else if (hp <= 2) rgb1 = [x, c, 0];
+    else if (hp <= 3) rgb1 = [0, c, x];
+    else if (hp <= 4) rgb1 = [0, x, c];
+    else if (hp <= 5) rgb1 = [x, 0, c];
+    else if (hp <= 6) rgb1 = [c, 0, x];
+    const m = l - (c / 2);
+    return rgb1.map(n => Math.max(0, Math.min(255, Math.round(255 * (n + m)))));
+  },
+  colorThemeCSSProperties(...args) {
+    let hex;
+    let rgb;
+    if (args.length === 1) {
+      hex = args[0];
+      rgb = Utils.colorHexToRgb(hex);
+    } else if (args.length === 3) {
+      rgb = args;
+      hex = Utils.colorRgbToHex(...rgb);
+    }
+    if (!rgb) return {};
+    const hsl = Utils.colorRgbToHsl(...rgb);
+    const hslShade = [hsl[0], hsl[1], Math.max(0, (hsl[2] - 0.08))];
+    const hslTint = [hsl[0], hsl[1], Math.max(0, (hsl[2] + 0.08))];
+    const shade = Utils.colorRgbToHex(...Utils.colorHslToRgb(...hslShade));
+    const tint = Utils.colorRgbToHex(...Utils.colorHslToRgb(...hslTint));
+    return {
+      '--f7-theme-color': hex,
+      '--f7-theme-color-rgb': rgb.join(', '),
+      '--f7-theme-color-shade': shade,
+      '--f7-theme-color-tint': tint,
+    };
   },
 };
 export default Utils;

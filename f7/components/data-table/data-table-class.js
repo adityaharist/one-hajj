@@ -74,14 +74,18 @@ class DataTable extends Framework7Class {
     function handleSortableClick() {
       const $cellEl = $(this);
       const isActive = $cellEl.hasClass('sortable-cell-active');
-      let currentSort;
+      const currentSort = $cellEl.hasClass('sortable-desc') ? 'desc' : 'asc';
+      let newSort;
       if (isActive) {
-        currentSort = $cellEl.hasClass('sortable-desc') ? 'desc' : 'asc';
-        $cellEl.removeClass('sortable-desc sortable-asc').addClass(`sortable-${currentSort === 'desc' ? 'asc' : 'desc'}`);
+        newSort = currentSort === 'desc' ? 'asc' : 'desc';
+        $cellEl.removeClass('sortable-desc sortable-asc').addClass(`sortable-${newSort}`);
       } else {
         $el.find('thead .sortable-cell-active').removeClass('sortable-cell-active');
         $cellEl.addClass('sortable-cell-active');
+        newSort = currentSort;
       }
+      $cellEl.trigger('datatable:sort', newSort);
+      table.emit('local::sort dataTableSort', table, newSort);
     }
     table.attachEvents = function attachEvents() {
       table.$el.on('change', '.checkbox-cell input[type="checkbox"]', handleChange);
@@ -100,6 +104,7 @@ class DataTable extends Framework7Class {
 
     return table;
   }
+
   setCollapsibleLabels() {
     const table = this;
     if (!table.collapsible) return;
@@ -112,6 +117,7 @@ class DataTable extends Framework7Class {
       }
     });
   }
+
   checkSelectedHeader() {
     const table = this;
     if (table.$headerEl.length > 0 && table.$headerSelectedEl.length > 0) {
@@ -120,21 +126,26 @@ class DataTable extends Framework7Class {
       table.$headerSelectedEl.find('.data-table-selected-count').text(checkedItems);
     }
   }
+
   init() {
     const table = this;
     table.attachEvents();
     table.setCollapsibleLabels();
     table.checkSelectedHeader();
   }
+
   destroy() {
     let table = this;
 
     table.$el.trigger('datatable:beforedestroy', table);
-    table.emit('local::beforeDestroy datatableBeforeDestroy', table);
+    table.emit('local::beforeDestroy dataTableBeforeDestroy', table);
 
     table.attachEvents();
-    table.$el[0].f7DataTable = null;
-    delete table.$el[0].f7DataTable;
+
+    if (table.$el[0]) {
+      table.$el[0].f7DataTable = null;
+      delete table.$el[0].f7DataTable;
+    }
     Utils.deleteProps(table);
     table = null;
   }

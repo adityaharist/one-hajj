@@ -1,9 +1,9 @@
-import Utils from '../../utils/utils';
+import { window } from 'ssr-window';
 
 const keyPrefix = 'f7storage-';
 const Storage = {
   get(key) {
-    return Utils.promise((resolve, reject) => {
+    return new Promise((resolve, reject) => {
       try {
         const value = JSON.parse(window.localStorage.getItem(`${keyPrefix}${key}`));
         resolve(value);
@@ -13,7 +13,7 @@ const Storage = {
     });
   },
   set(key, value) {
-    return Utils.promise((resolve, reject) => {
+    return new Promise((resolve, reject) => {
       try {
         window.localStorage.setItem(`${keyPrefix}${key}`, JSON.stringify(value));
         resolve();
@@ -23,7 +23,7 @@ const Storage = {
     });
   },
   remove(key) {
-    return Utils.promise((resolve, reject) => {
+    return new Promise((resolve, reject) => {
       try {
         window.localStorage.removeItem(`${keyPrefix}${key}`);
         resolve();
@@ -39,7 +39,7 @@ const Storage = {
 
   },
   keys() {
-    return Utils.promise((resolve, reject) => {
+    return new Promise((resolve, reject) => {
       try {
         const keys = Object.keys(window.localStorage)
           .filter(keyName => keyName.indexOf(keyPrefix) === 0)
@@ -51,7 +51,7 @@ const Storage = {
     });
   },
   forEach(callback) {
-    return Utils.promise((resolve, reject) => {
+    return new Promise((resolve, reject) => {
       try {
         Object.keys(window.localStorage)
           .filter(keyName => keyName.indexOf(keyPrefix) === 0)

@@ -1,3 +1,4 @@
+import { document } from 'ssr-window';
 import Device from '../../utils/device';
 
 export default {
@@ -12,6 +13,12 @@ export default {
     init() {
       const classNames = [];
       const html = document.querySelector('html');
+      const metaStatusbar = document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]');
+      if (!html) return;
+      if (Device.standalone && Device.ios && metaStatusbar && metaStatusbar.content === 'black-translucent') {
+        classNames.push('device-full-viewport');
+      }
+
       // Pixel Ratio
       classNames.push(`device-pixel-ratio-${Math.floor(Device.pixelRatio)}`);
       if (Device.pixelRatio >= 2) {
@@ -35,12 +42,11 @@ export default {
         }
       } else if (Device.desktop) {
         classNames.push('device-desktop');
+        if (Device.macos) classNames.push('device-macos');
+        else if (Device.windows) classNames.push('device-windows');
       }
-      // Status bar classes
-      if (Device.statusbar) {
-        classNames.push('with-statusbar');
-      } else {
-        html.classList.remove('with-statusbar');
+      if (Device.cordova || Device.phonegap) {
+        classNames.push('device-cordova');
       }
 
       // Add html classes

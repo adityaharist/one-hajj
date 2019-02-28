@@ -40,7 +40,7 @@ class Autocomplete extends Framework7Class {
     }
     if (!view) view = app.views.main;
 
-    const id = Utils.now();
+    const id = Utils.id();
 
     let url = params.url;
     if (!url && $openerEl && $openerEl.length) {
@@ -183,7 +183,7 @@ class Autocomplete extends Framework7Class {
     }
     function onHtmlClick(e) {
       const $targetEl = $(e.target);
-      if ($targetEl.is(ac.$inputEl[0]) || ($targetEl.closest(ac.$dropdownEl[0]).length)) return;
+      if ($targetEl.is(ac.$inputEl[0]) || (ac.$dropdownEl && $targetEl.closest(ac.$dropdownEl[0]).length)) return;
       ac.close();
     }
     function onOpenerClick() {
@@ -197,7 +197,7 @@ class Autocomplete extends Framework7Class {
       ac.close();
     }
     function onResize() {
-      ac.positionDropDown();
+      ac.positionDropdown();
     }
 
     function onKeyDown(e) {
@@ -232,7 +232,7 @@ class Autocomplete extends Framework7Class {
       }
       if (ac.params.openIn === 'dropdown' && ac.$inputEl) {
         ac.$inputEl.on('focus', onInputFocus);
-        ac.$inputEl.on('input', onInputChange);
+        ac.$inputEl.on(ac.params.inputEvents, onInputChange);
         if (app.device.android) {
           $('html').on('click', onHtmlClick);
         } else {
@@ -249,7 +249,7 @@ class Autocomplete extends Framework7Class {
       }
       if (ac.params.openIn === 'dropdown' && ac.$inputEl) {
         ac.$inputEl.off('focus', onInputFocus);
-        ac.$inputEl.off('input', onInputChange);
+        ac.$inputEl.off(ac.params.inputEvents, onInputChange);
         if (app.device.android) {
           $('html').off('click', onHtmlClick);
         } else {
@@ -291,7 +291,8 @@ class Autocomplete extends Framework7Class {
 
     return ac;
   }
-  positionDropDown() {
+
+  positionDropdown() {
     const ac = this;
     const { $inputEl, app, $dropdownEl } = ac;
 
@@ -301,11 +302,20 @@ class Autocomplete extends Framework7Class {
     const inputOffsetWidth = $inputEl[0].offsetWidth;
     const inputOffsetHeight = $inputEl[0].offsetHeight;
     const $listEl = $inputEl.parents('.list');
+
+    let $listParent;
+    $listEl.parents().each((index, parentEl) => {
+      if ($listParent) return;
+      const $parentEl = $(parentEl);
+      if ($parentEl.parent($pageContentEl).length) $listParent = $parentEl;
+    });
+
     const listOffset = $listEl.offset();
-    const paddingBottom = parseInt($pageContentEl.css('padding-top'), 10);
-    const listOffsetLeft = $listEl.length > 0 ? listOffset.left - $listEl.parent().offset().left : 0;
+    const paddingBottom = parseInt($pageContentEl.css('padding-bottom'), 10);
+    const listOffsetLeft = $listEl.length > 0 ? listOffset.left - $pageContentEl.offset().left : 0;
     const inputOffsetLeft = inputOffset.left - ($listEl.length > 0 ? listOffset.left : 0) - (app.rtl ? 0 : 0);
     const inputOffsetTop = inputOffset.top - ($pageContentEl.offset().top - $pageContentEl[0].scrollTop);
+
     const maxHeight = $pageContentEl[0].scrollHeight - paddingBottom - (inputOffsetTop + $pageContentEl[0].scrollTop) - $inputEl[0].offsetHeight;
 
     const paddingProp = app.rtl ? 'padding-right' : 'padding-left';
@@ -313,7 +323,6 @@ class Autocomplete extends Framework7Class {
     if ($listEl.length && !ac.params.expandInput) {
       paddingValue = (app.rtl ? $listEl[0].offsetWidth - inputOffsetLeft - inputOffsetWidth : inputOffsetLeft) - (app.theme === 'md' ? 16 : 15);
     }
-
 
     $dropdownEl.css({
       left: `${$listEl.length > 0 ? listOffsetLeft : inputOffsetLeft}px`,
@@ -325,10 +334,12 @@ class Autocomplete extends Framework7Class {
       [paddingProp]: $listEl.length > 0 && !ac.params.expandInput ? `${paddingValue}px` : '',
     });
   }
+
   focus() {
     const ac = this;
     ac.$el.find('input[type=search]').focus();
   }
+
   source(query) {
     const ac = this;
     if (!ac.params.source) return;
@@ -370,6 +381,7 @@ class Autocomplete extends Framework7Class {
       }
     });
   }
+
   updateValues() {
     const ac = this;
     let valuesHTML = '';
@@ -385,6 +397,7 @@ class Autocomplete extends Framework7Class {
     }
     ac.$el.find('.autocomplete-values ul').html(valuesHTML);
   }
+
   preloaderHide() {
     const ac = this;
     if (ac.params.openIn === 'dropdown' && ac.$dropdownEl) {
@@ -393,6 +406,7 @@ class Autocomplete extends Framework7Class {
       $('.autocomplete-preloader').removeClass('autocomplete-preloader-visible');
     }
   }
+
   preloaderShow() {
     const ac = this;
     if (ac.params.openIn === 'dropdown' && ac.$dropdownEl) {
@@ -401,12 +415,14 @@ class Autocomplete extends Framework7Class {
       $('.autocomplete-preloader').addClass('autocomplete-preloader-visible');
     }
   }
+
   renderPreloader() {
     const ac = this;
     return `
-      <div class="autocomplete-preloader preloader ${ac.params.preloaderColor ? `color-${ac.params.preloaderColor}` : ''}">${ac.app.theme === 'md' ? Utils.mdPreloaderContent : ''}</div>
+      <div class="autocomplete-preloader preloader ${ac.params.preloaderColor ? `color-${ac.params.preloaderColor}` : ''}">${Utils[`${ac.app.theme}PreloaderContent`] || ''}</div>
     `.trim();
   }
+
   renderSearchbar() {
     const ac = this;
     if (ac.params.renderSearchbar) return ac.params.renderSearchbar.call(ac);
@@ -424,15 +440,17 @@ class Autocomplete extends Framework7Class {
     `.trim();
     return searchbarHTML;
   }
+
   renderItem(item, index) {
     const ac = this;
     if (ac.params.renderItem) return ac.params.renderItem.call(ac, item, index);
     let itemHtml;
+    const itemValue = item.value && typeof item.value === 'string' ? item.value.replace(/"/g, '&quot;') : item.value;
     if (ac.params.openIn !== 'dropdown') {
       itemHtml = `
         <li>
           <label class="item-${item.inputType} item-content">
-            <input type="${item.inputType}" name="${item.inputName}" value="${item.value}" ${item.selected ? 'checked' : ''}>
+            <input type="${item.inputType}" name="${item.inputName}" value="${itemValue}" ${item.selected ? 'checked' : ''}>
             <i class="icon icon-${item.inputType}"></i>
             <div class="item-inner">
               <div class="item-title">${item.text}</div>
@@ -444,7 +462,7 @@ class Autocomplete extends Framework7Class {
       // Dropdown
       itemHtml = `
         <li>
-          <label class="item-radio item-content" data-value="${item.value}">
+          <label class="item-radio item-content" data-value="${itemValue}">
             <div class="item-inner">
               <div class="item-title">${item.text}</div>
             </div>
@@ -455,7 +473,7 @@ class Autocomplete extends Framework7Class {
       // Dropwdown placeholder
       itemHtml = `
         <li class="autocomplete-dropdown-placeholder">
-          <div class="item-content">
+          <label class="item-content">
             <div class="item-inner">
               <div class="item-title">${item.text}</div>
             </div>
@@ -474,10 +492,10 @@ class Autocomplete extends Framework7Class {
       pageTitle = ac.$openerEl.find('.item-title').text().trim();
     }
     const navbarHtml = `
-      <div class="navbar ${ac.params.navbarColorTheme ? `color-theme-${ac.params.navbarColorTheme}` : ''}">
-        <div class="navbar-inner ${ac.params.navbarColorTheme ? `color-theme-${ac.params.navbarColorTheme}` : ''}">
+      <div class="navbar ${ac.params.navbarColorTheme ? `color-${ac.params.navbarColorTheme}` : ''}">
+        <div class="navbar-inner ${ac.params.navbarColorTheme ? `color-${ac.params.navbarColorTheme}` : ''}">
           <div class="left sliding">
-            <a href="#" class="link ${ac.params.openIn === 'page' ? 'back' : 'popup-close'}">
+            <a href="#" class="link ${ac.params.openIn === 'page' ? 'back' : 'popup-close'}" ${ac.params.openIn === 'popup' ? 'data-popup=".autocomplete-popup"' : ''}>
               <i class="icon icon-back"></i>
               <span class="ios-only">${ac.params.openIn === 'page' ? ac.params.pageBackLinkText : ac.params.popupCloseLinkText}</span>
             </a>
@@ -494,6 +512,7 @@ class Autocomplete extends Framework7Class {
     `.trim();
     return navbarHtml;
   }
+
   renderDropdown() {
     const ac = this;
     if (ac.params.renderDropdown) return ac.params.renderDropdown.call(ac, ac.items);
@@ -509,6 +528,7 @@ class Autocomplete extends Framework7Class {
     `.trim();
     return dropdownHtml;
   }
+
   renderPage() {
     const ac = this;
     if (ac.params.renderPage) return ac.params.renderPage.call(ac, ac.items);
@@ -518,7 +538,7 @@ class Autocomplete extends Framework7Class {
         ${ac.renderNavbar()}
         <div class="searchbar-backdrop"></div>
         <div class="page-content">
-          <div class="list autocomplete-list autocomplete-found autocomplete-list-${ac.id} ${ac.params.formColorTheme ? `color-theme-${ac.params.formColorTheme}` : ''}">
+          <div class="list autocomplete-list autocomplete-found autocomplete-list-${ac.id} ${ac.params.formColorTheme ? `color-${ac.params.formColorTheme}` : ''}">
             <ul></ul>
           </div>
           <div class="list autocomplete-not-found">
@@ -534,6 +554,7 @@ class Autocomplete extends Framework7Class {
     `.trim();
     return pageHtml;
   }
+
   renderPopup() {
     const ac = this;
     if (ac.params.renderPopup) return ac.params.renderPopup.call(ac, ac.items);
@@ -546,6 +567,7 @@ class Autocomplete extends Framework7Class {
     `.trim();
     return popupHtml;
   }
+
   onOpen(type, el) {
     const ac = this;
     const app = ac.app;
@@ -571,7 +593,7 @@ class Autocomplete extends Framework7Class {
         backdropEl: $el.find('.searchbar-backdrop'),
         customSearch: true,
         on: {
-          searchbarSearch(query) {
+          search(sb, query) {
             if (query.length === 0 && ac.searchbar.enabled) {
               ac.searchbar.backdropShow();
             } else {
@@ -594,6 +616,15 @@ class Autocomplete extends Framework7Class {
 
     ac.emit('local::open autocompleteOpen', ac);
   }
+
+  autoFocus() {
+    const ac = this;
+    if (ac.searchbar && ac.searchbar.$inputEl) {
+      ac.searchbar.$inputEl.focus();
+    }
+    return ac;
+  }
+
   onOpened() {
     const ac = this;
     if (ac.params.openIn !== 'dropdown' && ac.params.autoFocus) {
@@ -601,6 +632,7 @@ class Autocomplete extends Framework7Class {
     }
     ac.emit('local::opened autocompleteOpened', ac);
   }
+
   onClose() {
     const ac = this;
     if (ac.destroyed) return;
@@ -622,6 +654,7 @@ class Autocomplete extends Framework7Class {
 
     ac.emit('local::close autocompleteClose', ac);
   }
+
   onClosed() {
     const ac = this;
     if (ac.destroyed) return;
@@ -633,6 +666,7 @@ class Autocomplete extends Framework7Class {
 
     ac.emit('local::closed autocompleteClosed', ac);
   }
+
   openPage() {
     const ac = this;
     if (ac.opened) return ac;
@@ -663,6 +697,7 @@ class Autocomplete extends Framework7Class {
     });
     return ac;
   }
+
   openPopup() {
     const ac = this;
     if (ac.opened) return ac;
@@ -700,6 +735,7 @@ class Autocomplete extends Framework7Class {
     }
     return ac;
   }
+
   openDropdown() {
     const ac = this;
 
@@ -710,18 +746,20 @@ class Autocomplete extends Framework7Class {
     if ($listEl.length && ac.$inputEl.parents('.item-content').length > 0 && ac.params.expandInput) {
       ac.$inputEl.parents('.item-content').addClass('item-content-dropdown-expanded');
     }
-    ac.positionDropDown();
+
     const $pageContentEl = ac.$inputEl.parents('.page-content');
-    if (ac.params.dropdownel) {
-      $(ac.params.dropdownel).append(ac.$dropdownEl);
+    if (ac.params.dropdownContainerEl) {
+      $(ac.params.dropdownContainerEl).append(ac.$dropdownEl);
     } else if ($pageContentEl.length === 0) {
       ac.$dropdownEl.insertAfter(ac.$inputEl);
     } else {
+      ac.positionDropdown();
       $pageContentEl.append(ac.$dropdownEl);
     }
     ac.onOpen('dropdown', ac.$dropdownEl);
     ac.onOpened('dropdown', ac.$dropdownEl);
   }
+
   open() {
     const ac = this;
     if (ac.opened) return ac;
@@ -732,6 +770,7 @@ class Autocomplete extends Framework7Class {
     }).join('')}`]();
     return ac;
   }
+
   close() {
     const ac = this;
     if (!ac.opened) return ac;
@@ -751,10 +790,12 @@ class Autocomplete extends Framework7Class {
     }
     return ac;
   }
+
   init() {
     const ac = this;
     ac.attachEvents();
   }
+
   destroy() {
     const ac = this;
     ac.emit('local::beforeDestroy autocompleteBeforeDestroy', ac);

@@ -1,4 +1,5 @@
 import $ from 'dom7';
+import { window } from 'ssr-window';
 import Utils from '../../utils/utils';
 import Modal from '../modal/modal-class';
 
@@ -140,8 +141,8 @@ class Notification extends Modal {
       notification.$el.transform('');
 
       if (
-        (touchesDiff < -10 && timeDiff < 300) ||
-        (-touchesDiff >= notificationHeight / 1)
+        (touchesDiff < -10 && timeDiff < 300)
+        || (-touchesDiff >= notificationHeight / 1)
       ) {
         notification.close();
       }
@@ -195,6 +196,7 @@ class Notification extends Modal {
 
     return notification;
   }
+
   render() {
     const notification = this;
     if (notification.params.render) return notification.params.render.call(notification, notification);

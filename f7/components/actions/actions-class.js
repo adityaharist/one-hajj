@@ -65,17 +65,19 @@ class Actions extends Modal {
       const buttonEl = this;
       let buttonIndex;
       let groupIndex;
-      if ($(buttonEl).hasClass('item-link')) {
+      if ($(buttonEl).hasClass('list-button')) {
         buttonIndex = $(buttonEl).parents('li').index();
         groupIndex = $(buttonEl).parents('.list').index();
       } else {
         buttonIndex = $(buttonEl).index();
         groupIndex = $(buttonEl).parents('.actions-group').index();
       }
-      const button = groups[groupIndex][buttonIndex];
-      if (button.onClick) button.onClick(actions, e);
-      if (actions.params.onClick) actions.params.onClick(actions, e);
-      if (button.close !== false) actions.close();
+      if (typeof groups !== 'undefined') {
+        const button = groups[groupIndex][buttonIndex];
+        if (button.onClick) button.onClick(actions, e);
+        if (actions.params.onClick) actions.params.onClick(actions, e);
+        if (button.close !== false) actions.close();
+      }
     }
     actions.open = function open(animate) {
       let convertToPopover = false;
@@ -83,9 +85,9 @@ class Actions extends Modal {
       if (actions.params.convertToPopover && (targetEl || (targetX !== undefined && targetY !== undefined))) {
         // Popover
         if (
-          actions.params.forceToPopover ||
-          (app.device.ios && app.device.ipad) ||
-          app.width >= 768
+          actions.params.forceToPopover
+          || (app.device.ios && app.device.ipad)
+          || app.width >= 768
         ) {
           convertToPopover = true;
         }
@@ -102,12 +104,12 @@ class Actions extends Modal {
         });
         popover.open(animate);
         popover.once('popoverOpened', () => {
-          popover.$el.find('.item-link').each((groupIndex, buttonEl) => {
+          popover.$el.find('.list-button').each((groupIndex, buttonEl) => {
             $(buttonEl).on('click', buttonOnClick);
           });
         });
         popover.once('popoverClosed', () => {
-          popover.$el.find('.item-link').each((groupIndex, buttonEl) => {
+          popover.$el.find('.list-button').each((groupIndex, buttonEl) => {
             $(buttonEl).off('click', buttonOnClick);
           });
           Utils.nextTick(() => {
@@ -118,14 +120,17 @@ class Actions extends Modal {
       } else {
         actions.$el = actions.actionsHtml ? $(actions.actionsHtml) : actions.$el;
         actions.$el[0].f7Modal = actions;
-        actions.$el.find('.actions-button').each((groupIndex, buttonEl) => {
-          $(buttonEl).on('click', buttonOnClick);
-        });
-        actions.once('actionsClosed', () => {
-          actions.$el.find('.list-button').each((groupIndex, buttonEl) => {
-            $(buttonEl).off('click', buttonOnClick);
+        if (actions.groups) {
+          actions.$el.find('.actions-button').each((groupIndex, buttonEl) => {
+            $(buttonEl).on('click', buttonOnClick);
           });
-        });
+          actions.once('actionsClosed', () => {
+            actions.$el.find('.actions-button').each((groupIndex, buttonEl) => {
+              $(buttonEl).off('click', buttonOnClick);
+            });
+          });
+        }
+        actions.el = actions.$el[0];
         originalOpen.call(actions, animate);
       }
       return actions;
@@ -149,25 +154,53 @@ class Actions extends Modal {
       type: 'actions',
     });
 
+    function handleClick(e) {
+      const target = e.target;
+      const $target = $(target);
+      if ($target.closest(actions.el).length === 0) {
+        if (
+          actions.params.closeByBackdropClick
+          && actions.params.backdrop
+          && actions.backdropEl
+          && actions.backdropEl === target
+        ) {
+          actions.close();
+        } else if (actions.params.closeByOutsideClick) {
+          actions.close();
+        }
+      }
+    }
+
+    actions.on('opened', () => {
+      if (actions.params.closeByBackdropClick || actions.params.closeByOutsideClick) {
+        app.on('click', handleClick);
+      }
+    });
+    actions.on('close', () => {
+      if (actions.params.closeByBackdropClick || actions.params.closeByOutsideClick) {
+        app.off('click', handleClick);
+      }
+    });
+
     if ($el) {
       $el[0].f7Modal = actions;
     }
 
     return actions;
   }
+
   render() {
     const actions = this;
     if (actions.params.render) return actions.params.render.call(actions, actions);
     const { groups } = actions;
     return `
       <div class="actions-modal${actions.params.grid ? ' actions-grid' : ''}">
-        ${groups.map(group =>
-          `<div class="actions-group">
+        ${groups.map(group => `<div class="actions-group">
             ${group.map((button) => {
               const buttonClasses = [`actions-${button.label ? 'label' : 'button'}`];
               const { color, bg, bold, disabled, label, text, icon } = button;
               if (color) buttonClasses.push(`color-${color}`);
-              if (bg) buttonClasses.push(`bg-${color}`);
+              if (bg) buttonClasses.push(`bg-color-${bg}`);
               if (bold) buttonClasses.push('actions-button-bold');
               if (disabled) buttonClasses.push('disabled');
               if (label) {
@@ -183,6 +216,7 @@ class Actions extends Modal {
       </div>
     `.trim();
   }
+
   renderPopover() {
     const actions = this;
     if (actions.params.renderPopover) return actions.params.renderPopover.call(actions, actions);
@@ -197,16 +231,15 @@ class Actions extends Modal {
                   const itemClasses = [];
                   const { color, bg, bold, disabled, label, text, icon } = button;
                   if (color) itemClasses.push(`color-${color}`);
-                  if (bg) itemClasses.push(`bg-${bg}`);
+                  if (bg) itemClasses.push(`bg-color-${bg}`);
                   if (bold) itemClasses.push('popover-from-actions-bold');
                   if (disabled) itemClasses.push('disabled');
                   if (label) {
                     itemClasses.push('popover-from-actions-label');
                     return `<li class="${itemClasses.join(' ')}">${text}</li>`;
                   }
-                  itemClasses.push('item-link');
                   if (icon) {
-                    itemClasses.push('item-content');
+                    itemClasses.push('item-link item-content');
                     return `
                       <li>
                         <a class="${itemClasses.join(' ')}">
@@ -225,7 +258,7 @@ class Actions extends Modal {
                   itemClasses.push('list-button');
                   return `
                     <li>
-                      <a href="#" class="list-button ${itemClasses.join(' ')}">${text}</a>
+                      <a href="#" class="${itemClasses.join(' ')}">${text}</a>
                     </li>
                   `;
                 }).join('')}

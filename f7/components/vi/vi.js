@@ -1,3 +1,4 @@
+import { document } from 'ssr-window';
 import $ from 'dom7';
 import Device from '../../utils/device';
 import ViAd from './vi-class';
@@ -47,13 +48,13 @@ export default {
         return new ViAd(app, adParams);
       },
       loadSdk() {
-        if (app.vi.skdReady) return;
+        if (app.vi.sdkReady) return;
         const script = document.createElement('script');
         script.onload = function onload() {
           app.emit('viSdkReady');
-          app.vi.skdReady = true;
+          app.vi.sdkReady = true;
         };
-        script.src = 'http://c.vi-serve.com/viadshtml/vi.min.js';
+        script.src = 'https://c.vi-serve.com/viadshtml/vi.min.js';
         $('head').append(script);
       },
     };

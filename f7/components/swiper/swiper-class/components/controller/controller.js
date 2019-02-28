@@ -3,7 +3,7 @@ import Swiper from '../core/core-class';
 import Utils from '../../utils/utils';
 
 const Controller = {
-  LinearSpline(x, y) {
+  LinearSpline: function LinearSpline(x, y) {
     const binarySearch = (function search() {
       let maxIndex;
       let minIndex;
@@ -48,9 +48,9 @@ const Controller = {
   getInterpolateFunction(c) {
     const swiper = this;
     if (!swiper.controller.spline) {
-      swiper.controller.spline = swiper.params.loop ?
-        new Controller.LinearSpline(swiper.slidesGrid, c.slidesGrid) :
-        new Controller.LinearSpline(swiper.snapGrid, c.snapGrid);
+      swiper.controller.spline = swiper.params.loop
+        ? new Controller.LinearSpline(swiper.slidesGrid, c.slidesGrid)
+        : new Controller.LinearSpline(swiper.snapGrid, c.snapGrid);
     }
   },
   setTranslate(setTranslate, byController) {
@@ -63,7 +63,7 @@ const Controller = {
       // x is the Grid of the scrolled scroller and y will be the controlled scroller
       // it makes sense to create this only once and recall it for the interpolation
       // the function does a lot of value caching for performance
-      const translate = c.rtl && c.params.direction === 'horizontal' ? -swiper.translate : swiper.translate;
+      const translate = swiper.rtlTranslate ? -swiper.translate : swiper.translate;
       if (swiper.params.controller.by === 'slide') {
         swiper.controller.getInterpolateFunction(c);
         // i am not sure why the values have to be multiplicated this way, tried to invert the snapGrid
@@ -102,6 +102,11 @@ const Controller = {
       c.setTransition(duration, swiper);
       if (duration !== 0) {
         c.transitionStart();
+        if (c.params.autoHeight) {
+          Utils.nextTick(() => {
+            c.updateAutoHeight();
+          });
+        }
         c.$wrapperEl.transitionEnd(() => {
           if (!controlled) return;
           if (c.params.loop && swiper.params.controller.by === 'slide') {

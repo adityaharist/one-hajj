@@ -1,9 +1,9 @@
+import { window, document } from 'ssr-window';
 import $ from 'dom7';
 import Template7 from 'template7';
 import PathToRegexp from 'path-to-regexp'; // eslint-disable-line
 import Framework7Class from '../../utils/class';
 import Utils from '../../utils/utils';
-import Component from '../../utils/component';
 import History from '../../utils/history';
 import SwipeBack from './swipe-back';
 
@@ -11,6 +11,8 @@ import { refreshPage, forward, load, navigate } from './navigate';
 import { tabLoad, tabRemove } from './tab';
 import { modalLoad, modalRemove } from './modal';
 import { backward, loadBack, back } from './back';
+import { clearPreviousHistory, clearPreviousPages } from './clear-previous-history';
+import appRouterCheck from './app-router-check';
 
 class Router extends Framework7Class {
   constructor(app, view) {
@@ -87,45 +89,30 @@ class Router extends Framework7Class {
       },
     });
 
-    Utils.extend(router, {
-      // Load
-      forward,
-      load,
-      navigate,
-      refreshPage,
-      // Tab
-      tabLoad,
-      tabRemove,
-      // Modal
-      modalLoad,
-      modalRemove,
-      // Back
-      backward,
-      loadBack,
-      back,
-    });
-
     return router;
   }
-  animatableNavElements(newNavbarInner, oldNavbarInner) {
+
+  animatableNavElements(newNavbarInner, oldNavbarInner, toLarge, fromLarge, direction) {
     const router = this;
     const dynamicNavbar = router.dynamicNavbar;
+    const separateNavbar = router.separateNavbar;
     const animateIcon = router.params.iosAnimateNavbarBackIcon;
 
     let newNavEls;
     let oldNavEls;
-    function animatableNavEl(el, navbarInner) {
-      const $el = $(el);
+    function animatableNavEl($el, navbarInner) {
       const isSliding = $el.hasClass('sliding') || navbarInner.hasClass('sliding');
       const isSubnavbar = $el.hasClass('subnavbar');
       const needsOpacityTransition = isSliding ? !isSubnavbar : true;
-      const hasIcon = isSliding && animateIcon && $el.hasClass('left') && $el.find('.back .icon').length > 0;
-      let $iconEl;
-      if (hasIcon) $iconEl = $el.find('.back .icon');
+      const $iconEl = $el.find('.back .icon');
+      let isIconLabel;
+      if (isSliding && animateIcon && $el.hasClass('left') && $iconEl.length > 0 && $iconEl.next('span').length) {
+        $el = $iconEl.next('span'); // eslint-disable-line
+        isIconLabel = true;
+      }
       return {
         $el,
-        $iconEl,
-        hasIcon,
+        isIconLabel,
         leftOffset: $el[0].f7NavbarLeftOffset,
         rightOffset: $el[0].f7NavbarRightOffset,
         isSliding,
@@ -137,10 +124,19 @@ class Router extends Framework7Class {
       newNavEls = [];
       oldNavEls = [];
       newNavbarInner.children('.left, .right, .title, .subnavbar').each((index, navEl) => {
-        newNavEls.push(animatableNavEl(navEl, newNavbarInner));
+        const $navEl = $(navEl);
+        if ($navEl.hasClass('left') && fromLarge && direction === 'forward' && separateNavbar) return;
+        if ($navEl.hasClass('title') && toLarge) return;
+        newNavEls.push(animatableNavEl($navEl, newNavbarInner));
       });
       oldNavbarInner.children('.left, .right, .title, .subnavbar').each((index, navEl) => {
-        oldNavEls.push(animatableNavEl(navEl, oldNavbarInner));
+        const $navEl = $(navEl);
+        if ($navEl.hasClass('left') && toLarge && !fromLarge && direction === 'forward' && separateNavbar) return;
+        if ($navEl.hasClass('left') && toLarge && direction === 'backward' && separateNavbar) return;
+        if ($navEl.hasClass('title') && fromLarge) {
+          return;
+        }
+        oldNavEls.push(animatableNavEl($navEl, oldNavbarInner));
       });
       [oldNavEls, newNavEls].forEach((navEls) => {
         navEls.forEach((navEl) => {
@@ -149,9 +145,9 @@ class Router extends Framework7Class {
           const otherEls = navEls === oldNavEls ? newNavEls : oldNavEls;
           if (!(isSliding && $el.hasClass('title') && otherEls)) return;
           otherEls.forEach((otherNavEl) => {
-            if (otherNavEl.$el.hasClass('left') && otherNavEl.hasIcon) {
-              const iconTextEl = otherNavEl.$el.find('.back span')[0];
-              n.leftOffset += iconTextEl ? iconTextEl.offsetLeft : 0;
+            if (otherNavEl.isIconLabel) {
+              const iconTextEl = otherNavEl.$el[0];
+              n.leftOffset += iconTextEl ? (iconTextEl.offsetLeft || 0) : 0;
             }
           });
         });
@@ -160,63 +156,86 @@ class Router extends Framework7Class {
 
     return { newNavEls, oldNavEls };
   }
-  animateWithCSS(oldPage, newPage, oldNavbarInner, newNavbarInner, direction, callback) {
+
+  animate(oldPage, newPage, oldNavbarInner, newNavbarInner, direction, callback) {
     const router = this;
+    if (router.params.animateCustom) {
+      router.params.animateCustom.apply(router, [oldPage, newPage, oldNavbarInner, newNavbarInner, direction, callback]);
+      return;
+    }
     const dynamicNavbar = router.dynamicNavbar;
-    const separateNavbar = router.separateNavbar;
     const ios = router.app.theme === 'ios';
     // Router Animation class
     const routerTransitionClass = `router-transition-${direction} router-transition-css-${direction}`;
 
     let newNavEls;
     let oldNavEls;
-    let navbarWidth = 0;
+
+    let fromLarge;
+    let toLarge;
+
+    let oldIsLarge;
+    let newIsLarge;
 
     if (ios && dynamicNavbar) {
-      if (!separateNavbar) {
-        navbarWidth = newNavbarInner[0].offsetWidth;
-      }
-      const navEls = router.animatableNavElements(newNavbarInner, oldNavbarInner);
+      oldIsLarge = oldNavbarInner && oldNavbarInner.hasClass('navbar-inner-large');
+      newIsLarge = newNavbarInner && newNavbarInner.hasClass('navbar-inner-large');
+      fromLarge = oldIsLarge && !oldNavbarInner.hasClass('navbar-inner-large-collapsed');
+      toLarge = newIsLarge && !newNavbarInner.hasClass('navbar-inner-large-collapsed');
+      const navEls = router.animatableNavElements(newNavbarInner, oldNavbarInner, toLarge, fromLarge, direction);
       newNavEls = navEls.newNavEls;
       oldNavEls = navEls.oldNavEls;
     }
 
     function animateNavbars(progress) {
-      if (ios && dynamicNavbar) {
-        newNavEls.forEach((navEl) => {
-          const $el = navEl.$el;
-          const offset = direction === 'forward' ? navEl.rightOffset : navEl.leftOffset;
-          if (navEl.isSliding) {
+      if (!(ios && dynamicNavbar)) return;
+      if (progress === 1) {
+        if (toLarge) {
+          newNavbarInner.addClass('router-navbar-transition-to-large');
+          oldNavbarInner.addClass('router-navbar-transition-to-large');
+        }
+        if (fromLarge) {
+          newNavbarInner.addClass('router-navbar-transition-from-large');
+          oldNavbarInner.addClass('router-navbar-transition-from-large');
+        }
+      }
+      newNavEls.forEach((navEl) => {
+        const $el = navEl.$el;
+        const offset = direction === 'forward' ? navEl.rightOffset : navEl.leftOffset;
+        if (navEl.isSliding) {
+          if (navEl.isSubnavbar && newIsLarge) {
+            $el[0].style.setProperty('transform', `translate3d(${offset * (1 - progress)}px, calc(-1 * var(--f7-navbar-large-collapse-progress) * var(--f7-navbar-large-title-height)), 0)`, 'important');
+          } else {
             $el.transform(`translate3d(${offset * (1 - progress)}px,0,0)`);
           }
-          if (navEl.hasIcon) {
-            if (direction === 'forward') {
-              navEl.$iconEl.transform(`translate3d(${(-offset - navbarWidth) * (1 - progress)}px,0,0)`);
-            } else {
-              navEl.$iconEl.transform(`translate3d(${(-offset + (navbarWidth / 5)) * (1 - progress)}px,0,0)`);
-            }
-          }
-        });
-        oldNavEls.forEach((navEl) => {
-          const $el = navEl.$el;
-          const offset = direction === 'forward' ? navEl.leftOffset : navEl.rightOffset;
-          if (navEl.isSliding) {
+        }
+      });
+      oldNavEls.forEach((navEl) => {
+        const $el = navEl.$el;
+        const offset = direction === 'forward' ? navEl.leftOffset : navEl.rightOffset;
+        if (navEl.isSliding) {
+          if (navEl.isSubnavbar && oldIsLarge) {
+            $el.transform(`translate3d(${offset * (progress)}px, calc(-1 * var(--f7-navbar-large-collapse-progress) * var(--f7-navbar-large-title-height)), 0)`);
+          } else {
             $el.transform(`translate3d(${offset * (progress)}px,0,0)`);
           }
-          if (navEl.hasIcon) {
-            if (direction === 'forward') {
-              navEl.$iconEl.transform(`translate3d(${(-offset + (navbarWidth / 5)) * (progress)}px,0,0)`);
-            } else {
-              navEl.$iconEl.transform(`translate3d(${(-offset - navbarWidth) * (progress)}px,0,0)`);
-            }
-          }
-        });
-      }
+        }
+      });
     }
 
     // AnimationEnd Callback
     function onDone() {
       if (router.dynamicNavbar) {
+        if (newNavbarInner) {
+          newNavbarInner.removeClass('router-navbar-transition-to-large router-navbar-transition-from-large');
+          newNavbarInner.addClass('navbar-no-title-large-transition');
+          Utils.nextFrame(() => {
+            newNavbarInner.removeClass('navbar-no-title-large-transition');
+          });
+        }
+        if (oldNavbarInner) {
+          oldNavbarInner.removeClass('router-navbar-transition-to-large router-navbar-transition-from-large');
+        }
         if (newNavbarInner.hasClass('sliding')) {
           newNavbarInner.find('.title, .left, .right, .left .icon, .subnavbar').transform('');
         } else {
@@ -240,7 +259,7 @@ class Router extends Framework7Class {
     if (dynamicNavbar) {
       // Prepare Navbars
       animateNavbars(0);
-      Utils.nextTick(() => {
+      Utils.nextFrame(() => {
         // Add class, start animation
         animateNavbars(1);
         router.$el.addClass(routerTransitionClass);
@@ -250,160 +269,7 @@ class Router extends Framework7Class {
       router.$el.addClass(routerTransitionClass);
     }
   }
-  animateWithJS(oldPage, newPage, oldNavbarInner, newNavbarInner, direction, callback) {
-    const router = this;
-    const dynamicNavbar = router.dynamicNavbar;
-    const separateNavbar = router.separateNavbar;
-    const ios = router.app.theme === 'ios';
-    const duration = ios ? 400 : 250;
-    const routerTransitionClass = `router-transition-${direction} router-transition-js-${direction}`;
 
-    let startTime = null;
-    let done = false;
-
-    let newNavEls;
-    let oldNavEls;
-    let navbarWidth = 0;
-
-    if (ios && dynamicNavbar) {
-      if (!separateNavbar) {
-        navbarWidth = newNavbarInner[0].offsetWidth;
-      }
-      const navEls = router.animatableNavElements(newNavbarInner, oldNavbarInner);
-      newNavEls = navEls.newNavEls;
-      oldNavEls = navEls.oldNavEls;
-    }
-
-    let $shadowEl;
-    let $opacityEl;
-
-    if (ios) {
-      $shadowEl = $('<div class="page-shadow-effect"></div>');
-      $opacityEl = $('<div class="page-opacity-effect"></div>');
-
-      if (direction === 'forward') {
-        newPage.append($shadowEl);
-        oldPage.append($opacityEl);
-      } else {
-        newPage.append($opacityEl);
-        oldPage.append($shadowEl);
-      }
-    }
-    const easing = Utils.bezier(0.25, 0.1, 0.25, 1);
-
-    function onDone() {
-      newPage.transform('').css('opacity', '');
-      oldPage.transform('').css('opacity', '');
-      if (ios) {
-        $shadowEl.remove();
-        $opacityEl.remove();
-        if (dynamicNavbar) {
-          newNavEls.forEach((navEl) => {
-            navEl.$el.transform('');
-            navEl.$el.css('opacity', '');
-          });
-          oldNavEls.forEach((navEl) => {
-            navEl.$el.transform('');
-            navEl.$el.css('opacity', '');
-          });
-          newNavEls = [];
-          oldNavEls = [];
-        }
-      }
-
-      router.$el.removeClass(routerTransitionClass);
-
-      if (callback) callback();
-    }
-
-    function render() {
-      const time = Utils.now();
-      if (!startTime) startTime = time;
-      const progress = Math.max(Math.min((time - startTime) / duration, 1), 0);
-      const easeProgress = easing(progress);
-
-      if (progress >= 1) {
-        done = true;
-      }
-      const inverter = router.app.rtl ? -1 : 1;
-      if (ios) {
-        if (direction === 'forward') {
-          newPage.transform(`translate3d(${(1 - easeProgress) * 100 * inverter}%,0,0)`);
-          oldPage.transform(`translate3d(${-easeProgress * 20 * inverter}%,0,0)`);
-          $shadowEl[0].style.opacity = easeProgress;
-          $opacityEl[0].style.opacity = easeProgress;
-        } else {
-          newPage.transform(`translate3d(${-(1 - easeProgress) * 20 * inverter}%,0,0)`);
-          oldPage.transform(`translate3d(${easeProgress * 100 * inverter}%,0,0)`);
-          $shadowEl[0].style.opacity = 1 - easeProgress;
-          $opacityEl[0].style.opacity = 1 - easeProgress;
-        }
-        if (dynamicNavbar) {
-          newNavEls.forEach((navEl) => {
-            const $el = navEl.$el;
-            const offset = direction === 'forward' ? navEl.rightOffset : navEl.leftOffset;
-            if (navEl.needsOpacityTransition) {
-              $el[0].style.opacity = easeProgress;
-            }
-            if (navEl.isSliding) {
-              $el.transform(`translate3d(${offset * (1 - easeProgress)}px,0,0)`);
-            }
-            if (navEl.hasIcon) {
-              if (direction === 'forward') {
-                navEl.$iconEl.transform(`translate3d(${(-offset - navbarWidth) * (1 - easeProgress)}px,0,0)`);
-              } else {
-                navEl.$iconEl.transform(`translate3d(${(-offset + (navbarWidth / 5)) * (1 - easeProgress)}px,0,0)`);
-              }
-            }
-          });
-          oldNavEls.forEach((navEl) => {
-            const $el = navEl.$el;
-            const offset = direction === 'forward' ? navEl.leftOffset : navEl.rightOffset;
-            if (navEl.needsOpacityTransition) {
-              $el[0].style.opacity = (1 - easeProgress);
-            }
-            if (navEl.isSliding) {
-              $el.transform(`translate3d(${offset * (easeProgress)}px,0,0)`);
-            }
-            if (navEl.hasIcon) {
-              if (direction === 'forward') {
-                navEl.$iconEl.transform(`translate3d(${(-offset + (navbarWidth / 5)) * (easeProgress)}px,0,0)`);
-              } else {
-                navEl.$iconEl.transform(`translate3d(${(-offset - navbarWidth) * (easeProgress)}px,0,0)`);
-              }
-            }
-          });
-        }
-      } else if (direction === 'forward') {
-        newPage.transform(`translate3d(0, ${(1 - easeProgress) * 56}px,0)`);
-        newPage.css('opacity', easeProgress);
-      } else {
-        oldPage.transform(`translate3d(0, ${easeProgress * 56}px,0)`);
-        oldPage.css('opacity', 1 - easeProgress);
-      }
-
-      if (done) {
-        onDone();
-        return;
-      }
-      Utils.nextFrame(render);
-    }
-
-    router.$el.addClass(routerTransitionClass);
-
-    Utils.nextFrame(render);
-  }
-  animate(...args) {
-    // Args: oldPage, newPage, oldNavbarInner, newNavbarInner, direction, callback
-    const router = this;
-    if (router.params.animateCustom) {
-      router.params.animateCustom.apply(router, args);
-    } else if (router.params.animateWithJS) {
-      router.animateWithJS(...args);
-    } else {
-      router.animateWithCSS(...args);
-    }
-  }
   removeModal(modalEl) {
     const router = this;
     router.removeEl(modalEl);
@@ -413,21 +279,38 @@ class Router extends Framework7Class {
     const $tabEl = $(tabEl);
     $tabEl.html('');
   }
+
   removeNavbar(el) {
     const router = this;
     router.removeEl(el);
   }
+
   removePage(el) {
+    const $el = $(el);
+    const f7Page = $el && $el[0] && $el[0].f7Page;
     const router = this;
+    if (f7Page && f7Page.route && f7Page.route.route && f7Page.route.route.keepAlive) {
+      $el.remove();
+      return;
+    }
     router.removeEl(el);
   }
+
   removeEl(el) {
     if (!el) return;
     const router = this;
     const $el = $(el);
     if ($el.length === 0) return;
-    if ($el[0].f7Component && $el[0].f7Component.destroy) {
-      $el[0].f7Component.destroy();
+    $el.find('.tab').each((tabIndex, tabEl) => {
+      $(tabEl).children().each((index, tabChild) => {
+        if (tabChild.f7Component) {
+          $(tabChild).trigger('tab:beforeremove');
+          tabChild.f7Component.$destroy();
+        }
+      });
+    });
+    if ($el[0].f7Component && $el[0].f7Component.$destroy) {
+      $el[0].f7Component.$destroy();
     }
     if (!router.params.removeElements) {
       return;
@@ -440,6 +323,7 @@ class Router extends Framework7Class {
       $el.remove();
     }
   }
+
   getPageEl(content) {
     const router = this;
     if (typeof content === 'string') {
@@ -454,6 +338,7 @@ class Router extends Framework7Class {
 
     return router.findElement('.page', router.tempDom);
   }
+
   findElement(stringSelector, container, notStacked) {
     const router = this;
     const view = router.view;
@@ -488,17 +373,12 @@ class Router extends Framework7Class {
     if (found && found.length > 1) return $(found[0]);
     return undefined;
   }
+
   flattenRoutes(routes = this.routes) {
     let flattenedRoutes = [];
     routes.forEach((route) => {
-      if ('routes' in route) {
-        const mergedPathsRoutes = route.routes.map((childRoute) => {
-          const cRoute = Utils.extend({}, childRoute);
-          cRoute.path = (`${route.path}/${cRoute.path}`).replace('///', '/').replace('//', '/');
-          return cRoute;
-        });
-        flattenedRoutes = flattenedRoutes.concat(route, this.flattenRoutes(mergedPathsRoutes));
-      } else if ('tabs' in route && route.tabs) {
+      let hasTabRoutes = false;
+      if ('tabs' in route && route.tabs) {
         const mergedPathsRoutes = route.tabs.map((tabRoute) => {
           const tRoute = Utils.extend({}, route, {
             path: (`${route.path}/${tabRoute.path}`).replace('///', '/').replace('//', '/'),
@@ -506,15 +386,31 @@ class Router extends Framework7Class {
             tab: tabRoute,
           });
           delete tRoute.tabs;
+          delete tRoute.routes;
           return tRoute;
         });
+        hasTabRoutes = true;
         flattenedRoutes = flattenedRoutes.concat(this.flattenRoutes(mergedPathsRoutes));
-      } else {
+      }
+      if ('routes' in route) {
+        const mergedPathsRoutes = route.routes.map((childRoute) => {
+          const cRoute = Utils.extend({}, childRoute);
+          cRoute.path = (`${route.path}/${cRoute.path}`).replace('///', '/').replace('//', '/');
+          return cRoute;
+        });
+        if (hasTabRoutes) {
+          flattenedRoutes = flattenedRoutes.concat(this.flattenRoutes(mergedPathsRoutes));
+        } else {
+          flattenedRoutes = flattenedRoutes.concat(route, this.flattenRoutes(mergedPathsRoutes));
+        }
+      }
+      if (!('routes' in route) && !('tabs' in route && route.tabs)) {
         flattenedRoutes.push(route);
       }
     });
     return flattenedRoutes;
   }
+
   // eslint-disable-next-line
   parseRouteUrl(url) {
     if (!url) return {};
@@ -530,6 +426,26 @@ class Router extends Framework7Class {
       path,
     };
   }
+
+  // eslint-disable-next-line
+  constructRouteUrl(route, { params, query } = {}) {
+    const { path } = route;
+    const toUrl = PathToRegexp.compile(path);
+    let url;
+    try {
+      url = toUrl(params || {});
+    } catch (error) {
+      throw new Error(`Framework7: error constructing route URL from passed params:\nRoute: ${path}\n${error.toString()}`);
+    }
+
+    if (query) {
+      if (typeof query === 'string') url += `?${query}`;
+      else url += `?${Utils.serializeObject(query)}`;
+    }
+
+    return url;
+  }
+
   findTabRoute(tabEl) {
     const router = this;
     const $tabEl = $(tabEl);
@@ -539,15 +455,16 @@ class Router extends Framework7Class {
     let foundTabRoute;
     flattenedRoutes.forEach((route) => {
       if (
-        route.parentPath === parentPath &&
-        route.tab &&
-        route.tab.id === tabId
+        route.parentPath === parentPath
+        && route.tab
+        && route.tab.id === tabId
       ) {
         foundTabRoute = route;
       }
     });
     return foundTabRoute;
   }
+
   findRouteByKey(key, value) {
     const router = this;
     const routes = router.routes;
@@ -562,6 +479,7 @@ class Router extends Framework7Class {
     });
     return matchingRoute;
   }
+
   findMatchingRoute(url) {
     if (!url) return undefined;
     const router = this;
@@ -591,6 +509,7 @@ class Router extends Framework7Class {
 
       if (matched) {
         keys.forEach((keyObj, index) => {
+          if (typeof keyObj.name === 'number') return;
           const paramValue = matched[index + 1];
           params[keyObj.name] = paramValue;
         });
@@ -614,6 +533,25 @@ class Router extends Framework7Class {
     });
     return matchingRoute;
   }
+
+  // eslint-disable-next-line
+  replaceRequestUrlParams(url = '', options = {}) {
+    let compiledUrl = url;
+    if (typeof compiledUrl === 'string'
+      && compiledUrl.indexOf('{{') >= 0
+      && options
+      && options.route
+      && options.route.params
+      && Object.keys(options.route.params).length
+    ) {
+      Object.keys(options.route.params).forEach((paramName) => {
+        const regExp = new RegExp(`{{${paramName}}}`, 'g');
+        compiledUrl = compiledUrl.replace(regExp, options.route.params[paramName] || '');
+      });
+    }
+    return compiledUrl;
+  }
+
   removeFromXhrCache(url) {
     const router = this;
     const xhrCache = router.cache.xhr;
@@ -623,6 +561,7 @@ class Router extends Framework7Class {
     }
     if (index !== false) xhrCache.splice(index, 1);
   }
+
   xhrRequest(requestUrl, options) {
     const router = this;
     const params = router.params;
@@ -630,42 +569,34 @@ class Router extends Framework7Class {
     let url = requestUrl;
 
     let hasQuery = url.indexOf('?') >= 0;
-    if (params.passRouteQueryToRequest &&
-      options &&
-      options.route &&
-      options.route.query &&
-      Object.keys(options.route.query).length
+    if (params.passRouteQueryToRequest
+      && options
+      && options.route
+      && options.route.query
+      && Object.keys(options.route.query).length
     ) {
       url += `${hasQuery ? '&' : '?'}${Utils.serializeObject(options.route.query)}`;
       hasQuery = true;
     }
 
-    if (params.passRouteParamsToRequest &&
-      options &&
-      options.route &&
-      options.route.params &&
-      Object.keys(options.route.params).length
+    if (params.passRouteParamsToRequest
+      && options
+      && options.route
+      && options.route.params
+      && Object.keys(options.route.params).length
     ) {
       url += `${hasQuery ? '&' : '?'}${Utils.serializeObject(options.route.params)}`;
       hasQuery = true;
     }
 
-    if (url.indexOf('{{') >= 0 &&
-      options &&
-      options.route &&
-      options.route.params &&
-      Object.keys(options.route.params).length
-    ) {
-      Object.keys(options.route.params).forEach((paramName) => {
-        const regExp = new RegExp(`{{${paramName}}}`, 'g');
-        url = url.replace(regExp, options.route.params[paramName] || '');
-      });
+    if (url.indexOf('{{') >= 0) {
+      url = router.replaceRequestUrlParams(url, options);
     }
     // should we ignore get params or not
     if (params.xhrCacheIgnoreGetParameters && url.indexOf('?') >= 0) {
       url = url.split('?')[0];
     }
-    return Utils.promise((resolve, reject) => {
+    return new Promise((resolve, reject) => {
       if (params.xhrCache && !ignoreCache && url.indexOf('nocache') < 0 && params.xhrCacheIgnore.indexOf(url) < 0) {
         for (let i = 0; i < router.cache.xhr.length; i += 1) {
           const cachedUrl = router.cache.xhr[i];
@@ -710,12 +641,14 @@ class Router extends Framework7Class {
       });
     });
   }
+
   // Remove theme elements
   removeThemeElements(el) {
     const router = this;
     const theme = router.app.theme;
     $(el).find(`.${theme === 'md' ? 'ios' : 'md'}-only, .if-${theme === 'md' ? 'ios' : 'md'}`).remove();
   }
+
   templateLoader(template, templateUrl, options, resolve, reject) {
     const router = this;
     function compile(t) {
@@ -739,7 +672,9 @@ class Router extends Framework7Class {
             $app: router.app,
             $root: Utils.extend({}, router.app.data, router.app.methods),
             $route: options.route,
+            $f7route: options.route,
             $router: router,
+            $f7router: router,
             $theme: {
               ios: router.app.theme === 'ios',
               md: router.app.theme === 'md',
@@ -770,49 +705,70 @@ class Router extends Framework7Class {
       compile(template);
     }
   }
+
   modalTemplateLoader(template, templateUrl, options, resolve, reject) {
     const router = this;
     return router.templateLoader(template, templateUrl, options, (html) => {
       resolve(html);
     }, reject);
   }
+
   tabTemplateLoader(template, templateUrl, options, resolve, reject) {
     const router = this;
     return router.templateLoader(template, templateUrl, options, (html) => {
       resolve(html);
     }, reject);
   }
+
   pageTemplateLoader(template, templateUrl, options, resolve, reject) {
     const router = this;
     return router.templateLoader(template, templateUrl, options, (html, newOptions = {}) => {
       resolve(router.getPageEl(html), newOptions);
     }, reject);
   }
+
   componentLoader(component, componentUrl, options = {}, resolve, reject) {
     const router = this;
+    const { app } = router;
     const url = typeof component === 'string' ? component : componentUrl;
-    function compile(c) {
-      const extendContext = Utils.extend(
+    const compiledUrl = router.replaceRequestUrlParams(url, options);
+    function compile(componentOptions) {
+      let context = options.context || {};
+      if (typeof context === 'function') context = context.call(router);
+      else if (typeof context === 'string') {
+        try {
+          context = JSON.parse(context);
+        } catch (err) {
+          reject();
+          throw (err);
+        }
+      }
+      const extendContext = Utils.merge(
         {},
-        options.context || {},
+        context,
         {
-          $,
-          $$: $,
-          $app: router.app,
-          $root: Utils.extend({}, router.app.data, router.app.methods),
           $route: options.route,
+          $f7route: options.route,
           $router: router,
-          $dom7: $,
+          $f7router: router,
           $theme: {
-            ios: router.app.theme === 'ios',
-            md: router.app.theme === 'md',
+            ios: app.theme === 'ios',
+            md: app.theme === 'md',
           },
         }
       );
-      const createdComponent = Component.create(c, extendContext);
+      const createdComponent = app.component.create(componentOptions, extendContext);
       resolve(createdComponent.el);
     }
-    if (url) {
+    let cachedComponent;
+    if (compiledUrl) {
+      router.cache.components.forEach((cached) => {
+        if (cached.url === compiledUrl) cachedComponent = cached.component;
+      });
+    }
+    if (compiledUrl && cachedComponent) {
+      compile(cachedComponent);
+    } else if (compiledUrl && !cachedComponent) {
       // Load via XHR
       if (router.xhr) {
         router.xhr.abort();
@@ -821,7 +777,12 @@ class Router extends Framework7Class {
       router
         .xhrRequest(url, options)
         .then((loadedComponent) => {
-          compile(Component.parse(loadedComponent));
+          const parsedComponent = app.component.parse(loadedComponent);
+          router.cache.components.push({
+            url: compiledUrl,
+            component: parsedComponent,
+          });
+          compile(parsedComponent);
         })
         .catch((err) => {
           reject();
@@ -831,24 +792,28 @@ class Router extends Framework7Class {
       compile(component);
     }
   }
+
   modalComponentLoader(rootEl, component, componentUrl, options, resolve, reject) {
     const router = this;
     router.componentLoader(component, componentUrl, options, (el) => {
       resolve(el);
     }, reject);
   }
+
   tabComponentLoader(tabEl, component, componentUrl, options, resolve, reject) {
     const router = this;
     router.componentLoader(component, componentUrl, options, (el) => {
       resolve(el);
     }, reject);
   }
+
   pageComponentLoader(routerEl, component, componentUrl, options, resolve, reject) {
     const router = this;
     router.componentLoader(component, componentUrl, options, (el, newOptions = {}) => {
       resolve(el, newOptions);
     }, reject);
   }
+
   getPageData(pageEl, navbarEl, from, to, route = {}, pageFromEl) {
     const router = this;
     const $pageEl = $(pageEl);
@@ -863,6 +828,10 @@ class Router extends Framework7Class {
       if ($pageFromEl.length) {
         pageFrom = $pageFromEl[0].f7Page;
       }
+    }
+    pageFrom = currentPage.pageFrom || pageFrom;
+    if (pageFrom && pageFrom.pageFrom) {
+      pageFrom.pageFrom = null;
     }
     const page = {
       app: router.app,
@@ -880,15 +849,13 @@ class Router extends Framework7Class {
       to,
       direction,
       route: currentPage.route ? currentPage.route : route,
-      pageFrom: currentPage.pageFrom || pageFrom,
+      pageFrom,
     };
 
-    if ($navbarEl && $navbarEl[0]) {
-      $navbarEl[0].f7Page = page;
-    }
     $pageEl[0].f7Page = page;
     return page;
   }
+
   // Callbacks
   pageCallback(callback, pageEl, navbarEl, from, to, options = {}, pageFromEl) {
     if (!pageEl) return;
@@ -897,6 +864,11 @@ class Router extends Framework7Class {
     if (!$pageEl.length) return;
     const { route } = options;
     const restoreScrollTopOnBack = router.params.restoreScrollTopOnBack;
+    const keepAlive = $pageEl[0].f7Page && $pageEl[0].f7Page.route && $pageEl[0].f7Page.route.route && $pageEl[0].f7Page.route.route.keepAlive;
+
+    if (callback === 'beforeRemove' && keepAlive) {
+      callback = 'beforeUnmount'; // eslint-disable-line
+    }
 
     const camelName = `page${callback[0].toUpperCase() + callback.slice(1, callback.length)}`;
     const colonName = `page:${callback.toLowerCase()}`;
@@ -907,6 +879,7 @@ class Router extends Framework7Class {
     } else {
       page = router.getPageData(pageEl, navbarEl, from, to, route, pageFromEl);
     }
+    page.swipeBack = !!options.swipeBack;
 
     const { on = {}, once = {} } = options.route ? options.route.route : {};
     if (options.on) {
@@ -959,8 +932,18 @@ class Router extends Framework7Class {
       attachEvents();
     }
     if (callback === 'init') {
-      if (restoreScrollTopOnBack && (from === 'previous' || !from) && to === 'current' && router.scrollHistory[page.route.url]) {
-        $pageEl.find('.page-content').scrollTop(router.scrollHistory[page.route.url]);
+      if (restoreScrollTopOnBack && (from === 'previous' || !from) && to === 'current' && router.scrollHistory[page.route.url] && !$pageEl.hasClass('no-restore-scroll')) {
+        let $pageContent = $pageEl.find('.page-content');
+        if ($pageContent.length > 0) {
+          // eslint-disable-next-line
+          $pageContent = $pageContent.filter((pageContentIndex, pageContentEl) => {
+            return (
+              $(pageContentEl).parents('.tab:not(.tab-active)').length === 0
+              && !$(pageContentEl).is('.tab:not(.tab-active)')
+            );
+          });
+        }
+        $pageContent.scrollTop(router.scrollHistory[page.route.url]);
       }
       attachEvents();
       if ($pageEl[0].f7PageInitialized) {
@@ -972,7 +955,17 @@ class Router extends Framework7Class {
     }
     if (restoreScrollTopOnBack && callback === 'beforeOut' && from === 'current' && to === 'previous') {
       // Save scroll position
-      router.scrollHistory[page.route.url] = $pageEl.find('.page-content').scrollTop();
+      let $pageContent = $pageEl.find('.page-content');
+      if ($pageContent.length > 0) {
+        // eslint-disable-next-line
+        $pageContent = $pageContent.filter((pageContentIndex, pageContentEl) => {
+          return (
+            $(pageContentEl).parents('.tab:not(.tab-active)').length === 0
+            && !$(pageContentEl).is('.tab:not(.tab-active)')
+          );
+        });
+      }
+      router.scrollHistory[page.route.url] = $pageContent.scrollTop();
     }
     if (restoreScrollTopOnBack && callback === 'beforeOut' && from === 'current' && to === 'next') {
       // Delete scroll position
@@ -982,11 +975,17 @@ class Router extends Framework7Class {
     $pageEl.trigger(colonName, page);
     router.emit(camelName, page);
 
-    if (callback === 'beforeRemove') {
+    if (callback === 'beforeRemove' || callback === 'beforeUnmount') {
       detachEvents();
-      $pageEl[0].f7Page = null;
+      if (!keepAlive) {
+        if ($pageEl[0].f7Page && $pageEl[0].f7Page.navbarEl) {
+          delete $pageEl[0].f7Page.navbarEl.f7Page;
+        }
+        $pageEl[0].f7Page = null;
+      }
     }
   }
+
   saveHistory() {
     const router = this;
     router.view.history = router.history;
@@ -994,6 +993,7 @@ class Router extends Framework7Class {
       window.localStorage[`f7router-${router.view.id}-history`] = JSON.stringify(router.history);
     }
   }
+
   restoreHistory() {
     const router = this;
     if (router.params.pushState && window.localStorage[`f7router-${router.view.id}-history`]) {
@@ -1001,18 +1001,63 @@ class Router extends Framework7Class {
       router.view.history = router.history;
     }
   }
+
   clearHistory() {
     const router = this;
     router.history = [];
+    if (router.view) router.view.history = [];
     router.saveHistory();
   }
+
+  updateCurrentUrl(newUrl) {
+    const router = this;
+    appRouterCheck(router, 'updateCurrentUrl');
+    // Update history
+    if (router.history.length) {
+      router.history[router.history.length - 1] = newUrl;
+    } else {
+      router.history.push(newUrl);
+    }
+
+    // Update current route params
+    const { query, hash, params, url, path } = router.parseRouteUrl(newUrl);
+    if (router.currentRoute) {
+      Utils.extend(router.currentRoute, {
+        query,
+        hash,
+        params,
+        url,
+        path,
+      });
+    }
+
+    if (router.params.pushState) {
+      const pushStateRoot = router.params.pushStateRoot || '';
+      History.replace(
+        router.view.id,
+        {
+          url: newUrl,
+        },
+        pushStateRoot + router.params.pushStateSeparator + newUrl
+      );
+    }
+
+    // Save History
+    router.saveHistory();
+
+    router.emit('routeUrlUpdate', router.currentRoute, router);
+  }
+
   init() {
     const router = this;
     const { app, view } = router;
 
     // Init Swipeback
     if ("universal" !== 'desktop') {
-      if (view && router.params.iosSwipeBack && app.theme === 'ios') {
+      if (
+        (view && router.params.iosSwipeBack && app.theme === 'ios')
+        || (view && router.params.mdSwipeBack && app.theme === 'md')
+      ) {
         SwipeBack(router);
       }
     }
@@ -1025,7 +1070,15 @@ class Router extends Framework7Class {
     let initUrl = router.params.url;
     let documentUrl = document.location.href.split(document.location.origin)[1];
     let historyRestored;
-    if (!router.params.pushState) {
+    const { pushState, pushStateOnLoad, pushStateSeparator, pushStateAnimateOnLoad } = router.params;
+    let { pushStateRoot } = router.params;
+    if (window.cordova && pushState && !pushStateSeparator && !pushStateRoot && document.location.pathname.indexOf('index.html')) {
+      // eslint-disable-next-line
+      console.warn('Framework7: wrong or not complete pushState configuration, trying to guess pushStateRoot');
+      pushStateRoot = document.location.pathname.split('index.html')[0];
+    }
+
+    if (!pushState || !pushStateOnLoad) {
       if (!initUrl) {
         initUrl = documentUrl;
       }
@@ -1036,12 +1089,12 @@ class Router extends Framework7Class {
         initUrl += document.location.hash;
       }
     } else {
-      if (router.params.pushStateRoot && documentUrl.indexOf(router.params.pushStateRoot) >= 0) {
-        documentUrl = documentUrl.split(router.params.pushStateRoot)[1];
+      if (pushStateRoot && documentUrl.indexOf(pushStateRoot) >= 0) {
+        documentUrl = documentUrl.split(pushStateRoot)[1];
         if (documentUrl === '') documentUrl = '/';
       }
-      if (router.params.pushStateSeparator.length > 0 && documentUrl.indexOf(router.params.pushStateSeparator) >= 0) {
-        initUrl = documentUrl.split(router.params.pushStateSeparator)[1];
+      if (pushStateSeparator.length > 0 && documentUrl.indexOf(pushStateSeparator) >= 0) {
+        initUrl = documentUrl.split(pushStateSeparator)[1];
       } else {
         initUrl = documentUrl;
       }
@@ -1053,7 +1106,7 @@ class Router extends Framework7Class {
       } else if (History.state && History.state[view.id] && History.state[view.id].url === router.history[router.history.length - 1]) {
         initUrl = router.history[router.history.length - 1];
       } else {
-        router.history = [documentUrl.split(router.params.pushStateSeparator)[0] || '/', initUrl];
+        router.history = [documentUrl.split(pushStateSeparator)[0] || '/', initUrl];
       }
       if (router.history.length > 1) {
         historyRestored = true;
@@ -1100,11 +1153,13 @@ class Router extends Framework7Class {
     if (router.$el.children('.page:not(.stacked)').length === 0 && initUrl) {
       // No pages presented in DOM, reload new page
       router.navigate(initUrl, {
+        initial: true,
         reloadCurrent: true,
         pushState: false,
       });
     } else {
       // Init current DOM page
+      let hasTabRoute;
       router.currentRoute = currentRoute;
       router.$el.children('.page:not(.stacked)').each((index, pageEl) => {
         const $pageEl = $(pageEl);
@@ -1116,10 +1171,17 @@ class Router extends Framework7Class {
             if (!router.$navbarEl.parents(document).length) {
               router.$el.prepend(router.$navbarEl);
             }
+            $navbarInnerEl.addClass('navbar-current');
             router.$navbarEl.append($navbarInnerEl);
+            if ($navbarInnerEl.children('.title-large').length) {
+              $navbarInnerEl.addClass('navbar-inner-large');
+            }
             $pageEl.children('.navbar').remove();
           } else {
             router.$navbarEl.addClass('navbar-hidden');
+            if ($navbarInnerEl.children('.title-large').length) {
+              router.$navbarEl.addClass('navbar-hidden navbar-large-hidden');
+            }
           }
         }
         const initOptions = {
@@ -1129,23 +1191,25 @@ class Router extends Framework7Class {
           Utils.extend(initOptions, router.currentRoute.route.options);
         }
         router.currentPageEl = $pageEl[0];
-        if (router.dynamicNavbar && $navbarInnerEl.length) {
+        if (router.separateNavbar && $navbarInnerEl.length) {
           router.currentNavbarEl = $navbarInnerEl[0];
         }
         router.removeThemeElements($pageEl);
-        if (router.dynamicNavbar && $navbarInnerEl.length) {
+        if (router.separateNavbar && $navbarInnerEl.length) {
           router.removeThemeElements($navbarInnerEl);
         }
         if (initOptions.route.route.tab) {
+          hasTabRoute = true;
           router.tabLoad(initOptions.route.route.tab, Utils.extend({}, initOptions));
         }
         router.pageCallback('init', $pageEl, $navbarInnerEl, 'current', undefined, initOptions);
       });
       if (historyRestored) {
         router.navigate(initUrl, {
+          initial: true,
           pushState: false,
           history: false,
-          animate: router.params.pushStateAnimateOnLoad,
+          animate: pushStateAnimateOnLoad,
           once: {
             pageAfterIn() {
               if (router.history.length > 2) {
@@ -1154,13 +1218,20 @@ class Router extends Framework7Class {
             },
           },
         });
-      } else {
+      }
+      if (!historyRestored && !hasTabRoute) {
         router.history.push(initUrl);
         router.saveHistory();
       }
     }
+    if (initUrl && pushState && pushStateOnLoad && (!History.state || !History.state[view.id])) {
+      History.initViewState(view.id, {
+        url: initUrl,
+      });
+    }
     router.emit('local::init routerInit', router);
   }
+
   destroy() {
     let router = this;
 
@@ -1175,5 +1246,26 @@ class Router extends Framework7Class {
     router = null;
   }
 }
+
+// Load
+Router.prototype.forward = forward;
+Router.prototype.load = load;
+Router.prototype.navigate = navigate;
+Router.prototype.refreshPage = refreshPage;
+// Tab
+Router.prototype.tabLoad = tabLoad;
+Router.prototype.tabRemove = tabRemove;
+// Modal
+Router.prototype.modalLoad = modalLoad;
+Router.prototype.modalRemove = modalRemove;
+// Back
+Router.prototype.backward = backward;
+Router.prototype.loadBack = loadBack;
+Router.prototype.back = back;
+// Clear previoius pages from the DOM
+Router.prototype.clearPreviousPages = clearPreviousPages;
+// Clear history
+Router.prototype.clearPreviousHistory = clearPreviousHistory;
+
 
 export default Router;

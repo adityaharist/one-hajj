@@ -1,3 +1,4 @@
+import { document } from 'ssr-window';
 import $ from 'dom7';
 import Template7 from 'template7';
 import Utils from '../../utils/utils';
@@ -20,6 +21,8 @@ class VirtualList extends Framework7Class {
       searchByItem: undefined,
       searchAll: undefined,
       itemTemplate: undefined,
+      ul: null,
+      createUl: true,
       renderItem(item) {
         return `
           <li>
@@ -72,14 +75,21 @@ class VirtualList extends Framework7Class {
     }
 
     // Append <ul>
-    vl.$ul = vl.params.ul ? $(vl.params.ul) : vl.$el.children('ul');
-    if (vl.$ul.length === 0) {
+    const ul = vl.params.ul;
+    vl.$ul = ul ? $(vl.params.ul) : vl.$el.children('ul');
+    if (vl.$ul.length === 0 && vl.params.createUl) {
       vl.$el.append('<ul></ul>');
       vl.$ul = vl.$el.children('ul');
     }
     vl.ul = vl.$ul[0];
 
+    let $itemsWrapEl;
+    if (!vl.ul && !vl.params.createUl) $itemsWrapEl = vl.$el;
+    else $itemsWrapEl = vl.$ul;
+
     Utils.extend(vl, {
+      $itemsWrapEl,
+      itemsWrapEl: $itemsWrapEl[0],
       // DOM cached items
       domCache: {},
       displayDomCache: {},
@@ -136,6 +146,7 @@ class VirtualList extends Framework7Class {
 
     return vl;
   }
+
   setListSize() {
     const vl = this;
     const items = vl.filteredItems || vl.items;
@@ -158,9 +169,10 @@ class VirtualList extends Framework7Class {
     }
 
     if (vl.updatableScroll || vl.params.setListHeight) {
-      vl.$ul.css({ height: `${vl.listHeight}px` });
+      vl.$itemsWrapEl.css({ height: `${vl.listHeight}px` });
     }
   }
+
   render(force, forceScrollTop) {
     const vl = this;
     if (force) vl.lastRepaintY = null;
@@ -260,9 +272,9 @@ class VirtualList extends Framework7Class {
     // Update list height with not updatable scroll
     if (!vl.updatableScroll) {
       if (vl.dynamicHeight) {
-        vl.ul.style.height = `${heightBeforeLastItem}px`;
+        vl.itemsWrapEl.style.height = `${heightBeforeLastItem}px`;
       } else {
-        vl.ul.style.height = `${(i * vl.params.height) / vl.params.cols}px`;
+        vl.itemsWrapEl.style.height = `${(i * vl.params.height) / vl.params.cols}px`;
       }
     }
 
@@ -273,15 +285,15 @@ class VirtualList extends Framework7Class {
       }
     } else {
       vl.emit('local::beforeClear vlBeforeClear', vl, vl.fragment);
-      vl.ul.innerHTML = '';
+      vl.itemsWrapEl.innerHTML = '';
 
       vl.emit('local::itemsBeforeInsert vlItemsBeforeInsert', vl, vl.fragment);
 
       if (items && items.length === 0) {
         vl.reachEnd = true;
-        if (vl.params.emptyTemplate) vl.ul.innerHTML = vl.params.emptyTemplate;
+        if (vl.params.emptyTemplate) vl.itemsWrapEl.innerHTML = vl.params.emptyTemplate;
       } else {
-        vl.ul.appendChild(vl.fragment);
+        vl.itemsWrapEl.appendChild(vl.fragment);
       }
 
       vl.emit('local::itemsAfterInsert vlItemsAfterInsert', vl, vl.fragment);
@@ -300,6 +312,7 @@ class VirtualList extends Framework7Class {
       });
     }
   }
+
   // Filter
   filterItems(indexes, resetScrollTop = true) {
     const vl = this;
@@ -312,6 +325,7 @@ class VirtualList extends Framework7Class {
     }
     vl.update();
   }
+
   resetFilter() {
     const vl = this;
     if (vl.params.showFilteredItemsOnly) {
@@ -322,6 +336,7 @@ class VirtualList extends Framework7Class {
     }
     vl.update();
   }
+
   scrollToItem(index) {
     const vl = this;
     if (index > vl.items.length) return false;
@@ -337,15 +352,18 @@ class VirtualList extends Framework7Class {
     vl.render(true, (listTop + itemTop) - parseInt(vl.$pageContentEl.css('padding-top'), 10));
     return true;
   }
+
   handleScroll() {
     const vl = this;
     vl.render();
   }
+
   // Handle resize event
   isVisible() {
     const vl = this;
     return !!(vl.el.offsetWidth || vl.el.offsetHeight || vl.el.getClientRects().length);
   }
+
   handleResize() {
     const vl = this;
     if (vl.isVisible()) {
@@ -353,6 +371,7 @@ class VirtualList extends Framework7Class {
       vl.render(true);
     }
   }
+
   // Append
   appendItems(items) {
     const vl = this;
@@ -361,10 +380,12 @@ class VirtualList extends Framework7Class {
     }
     vl.update();
   }
+
   appendItem(item) {
     const vl = this;
     vl.appendItems([item]);
   }
+
   // Replace
   replaceAllItems(items) {
     const vl = this;
@@ -373,12 +394,14 @@ class VirtualList extends Framework7Class {
     vl.domCache = {};
     vl.update();
   }
+
   replaceItem(index, item) {
     const vl = this;
     vl.items[index] = item;
     if (vl.params.cache) delete vl.domCache[index];
     vl.update();
   }
+
   // Prepend
   prependItems(items) {
     const vl = this;
@@ -394,6 +417,7 @@ class VirtualList extends Framework7Class {
     }
     vl.update();
   }
+
   prependItem(item) {
     const vl = this;
     vl.prependItems([item]);
@@ -431,6 +455,7 @@ class VirtualList extends Framework7Class {
     }
     vl.update();
   }
+
   // Insert before
   insertItemBefore(index, item) {
     const vl = this;
@@ -456,6 +481,7 @@ class VirtualList extends Framework7Class {
     }
     vl.update();
   }
+
   // Delete
   deleteItems(indexes) {
     const vl = this;
@@ -495,6 +521,7 @@ class VirtualList extends Framework7Class {
     }
     vl.update();
   }
+
   deleteAllItems() {
     const vl = this;
     vl.items = [];
@@ -502,27 +529,35 @@ class VirtualList extends Framework7Class {
     if (vl.params.cache) vl.domCache = {};
     vl.update();
   }
+
   deleteItem(index) {
     const vl = this;
     vl.deleteItems([index]);
   }
+
   // Clear cache
-  clearCachefunction() {
+  clearCache() {
     const vl = this;
     vl.domCache = {};
   }
+
   // Update Virtual List
-  update() {
+  update(deleteCache) {
     const vl = this;
+    if (deleteCache && vl.params.cache) {
+      vl.domCache = {};
+    }
     vl.setListSize();
     vl.render(true);
   }
+
   init() {
     const vl = this;
     vl.attachEvents();
     vl.setListSize();
     vl.render();
   }
+
   destroy() {
     let vl = this;
     vl.detachEvents();

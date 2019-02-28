@@ -1,26 +1,23 @@
+import { window, document } from 'ssr-window';
+
 const Support = (function Support() {
-  const positionSticky = (function supportPositionSticky() {
-    let support = false;
-    const div = document.createElement('div');
-    ('sticky -webkit-sticky -moz-sticky').split(' ').forEach((prop) => {
-      if (support) return;
-      div.style.position = prop;
-      if (div.style.position === prop) {
-        support = true;
-      }
-    });
-    return support;
-  }());
+  const testDiv = document.createElement('div');
 
   return {
-    positionSticky,
     touch: (function checkTouch() {
-      return !!(('ontouchstart' in window) || (window.DocumentTouch && document instanceof window.DocumentTouch));
+      return !!((window.navigator.maxTouchPoints > 0) || ('ontouchstart' in window) || (window.DocumentTouch && document instanceof window.DocumentTouch));
     }()),
 
-    transforms3d: (function checkTransforms3d() {
-      const div = document.createElement('div').style;
-      return ('webkitPerspective' in div || 'MozPerspective' in div || 'OPerspective' in div || 'MsPerspective' in div || 'perspective' in div);
+    pointerEvents: !!(window.navigator.pointerEnabled || window.PointerEvent || ('maxTouchPoints' in window.navigator)),
+    prefixedPointerEvents: !!window.navigator.msPointerEnabled,
+
+    transition: (function checkTransition() {
+      const style = testDiv.style;
+      return ('transition' in style || 'webkitTransition' in style || 'MozTransition' in style);
+    }()),
+    transforms3d: (window.Modernizr && window.Modernizr.csstransforms3d === true) || (function checkTransforms3d() {
+      const style = testDiv.style;
+      return ('webkitPerspective' in style || 'MozPerspective' in style || 'OPerspective' in style || 'MsPerspective' in style || 'perspective' in style);
     }()),
 
     flexbox: (function checkFlexbox() {
@@ -54,6 +51,10 @@ const Support = (function Support() {
 
     gestures: (function checkGestures() {
       return 'ongesturestart' in window;
+    }()),
+
+    intersectionObserver: (function checkObserver() {
+      return ('IntersectionObserver' in window);
     }()),
   };
 }());

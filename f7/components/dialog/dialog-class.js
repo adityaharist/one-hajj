@@ -1,4 +1,5 @@
 import $ from 'dom7';
+import { document } from 'ssr-window';
 import Utils from '../../utils/utils';
 import Modal from '../modal/modal-class';
 
@@ -12,8 +13,12 @@ class Dialog extends Modal {
       verticalButtons: false,
       onClick: undefined,
       cssClass: undefined,
+      destroyOnClose: false,
       on: {},
     }, params);
+    if (typeof extendedParams.closeByBackdropClick === 'undefined') {
+      extendedParams.closeByBackdropClick = app.params.dialog.closeByBackdropClick;
+    }
 
     // Extends with open/close Modal methods;
     super(app, extendedParams);
@@ -82,14 +87,47 @@ class Dialog extends Modal {
       if (dialog.params.onClick) dialog.params.onClick(dialog, index);
       if (button.close !== false) dialog.close();
     }
+    let addKeyboardHander;
+    function onKeyPress(e) {
+      const keyCode = e.keyCode;
+      buttons.forEach((button, index) => {
+        if (button.keyCodes && button.keyCodes.indexOf(keyCode) >= 0) {
+          if (document.activeElement) document.activeElement.blur();
+          if (button.onClick) button.onClick(dialog, e);
+          if (dialog.params.onClick) dialog.params.onClick(dialog, index);
+          if (button.close !== false) dialog.close();
+        }
+      });
+    }
     if (buttons && buttons.length > 0) {
-      $el.find('.dialog-button').each((index, buttonEl) => {
-        $(buttonEl).on('click', buttonOnClick);
+      dialog.on('open', () => {
+        $el.find('.dialog-button').each((index, buttonEl) => {
+          const button = buttons[index];
+          if (button.keyCodes) addKeyboardHander = true;
+          $(buttonEl).on('click', buttonOnClick);
+        });
+        if (
+          addKeyboardHander
+          && !app.device.ios
+          && !app.device.android
+          && !app.device.cordova
+        ) {
+          $(document).on('keydown', onKeyPress);
+        }
       });
       dialog.on('close', () => {
         $el.find('.dialog-button').each((index, buttonEl) => {
           $(buttonEl).off('click', buttonOnClick);
         });
+        if (
+          addKeyboardHander
+          && !app.device.ios
+          && !app.device.android
+          && !app.device.cordova
+        ) {
+          $(document).off('keydown', onKeyPress);
+        }
+        addKeyboardHander = false;
       });
     }
     Utils.extend(dialog, {
@@ -129,7 +167,40 @@ class Dialog extends Modal {
       },
     });
 
+    function handleClick(e) {
+      const target = e.target;
+      const $target = $(target);
+      if ($target.closest(dialog.el).length === 0) {
+        if (
+          dialog.params.closeByBackdropClick
+          && dialog.backdropEl
+          && dialog.backdropEl === target
+        ) {
+          dialog.close();
+        }
+      }
+    }
+
+    dialog.on('opened', () => {
+      if (dialog.params.closeByBackdropClick) {
+        app.on('click', handleClick);
+      }
+    });
+    dialog.on('close', () => {
+      if (dialog.params.closeByBackdropClick) {
+        app.off('click', handleClick);
+      }
+    });
+
     $el[0].f7Modal = dialog;
+
+    if (dialog.params.destroyOnClose) {
+      dialog.once('closed', () => {
+        setTimeout(() => {
+          dialog.destroy();
+        }, 0);
+      });
+    }
 
     return dialog;
   }
